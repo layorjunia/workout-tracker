@@ -1,0 +1,255 @@
+{
+  "days": {
+    "Day 1": [
+      "Seated Chest Press Machine",
+      "Tricep Cable Pushdown",
+      "Seated Shoulder Press",
+      "Tricep Dips (Assisted)",
+      "Pectoral Fly",
+      "Ab Twist Machine",
+      "Tricep Cable Pushdown Rope",
+      "Dumbbell Side Lateral Raise"
+    ],
+    "Day 2": [
+      "Row Machine",
+      "Wide Grip Pull-up (Assisted)",
+      "Preacher Curl",
+      "Lat Pulldown",
+      "Barbell Shrugs",
+      "Cable Ab Curl",
+      "Cable Face Pull"
+    ],
+    "Day 4": [
+      "Chest Press Machine",
+      "Wide Grip Pull-up (Assisted)",
+      "Neck Flexion",
+      "Tricep Dips (Assisted)",
+      "Preacher Curl"
+    ],
+    "Day 5": [
+      "Squats",
+      "Barbell Shrugs",
+      "Roman Chair",
+      "Leg Curl Machine",
+      "Hip Abduction",
+      "Ab Twist Machine",
+      "Seated Leg Extension",
+      "Hip Adduction",
+      "Squats Leg Press",
+      "Ab Oblique Crunch Machine"
+    ]
+  },
+  "exercises": [
+    {
+      "name": "Ab Oblique Crunch Machine",
+      "defaultSets": 3,
+      "defaultRepRange": "10\u201312",
+      "days": [
+        "Day 5"
+      ]
+    },
+    {
+      "name": "Ab Twist Machine",
+      "defaultSets": 3,
+      "defaultRepRange": "12-15",
+      "days": [
+        "Day 1",
+        "Day 5"
+      ]
+    },
+    {
+      "name": "Barbell Shrugs",
+      "defaultSets": 3,
+      "defaultRepRange": "8\u201310",
+      "days": [
+        "Day 2",
+        "Day 5"
+      ]
+    },
+    {
+      "name": "Cable Ab Curl",
+      "defaultSets": 3,
+      "defaultRepRange": "10\u201315",
+      "days": [
+        "Day 2"
+      ]
+    },
+    {
+      "name": "Cable Face Pull",
+      "defaultSets": 3,
+      "defaultRepRange": "10\u201315",
+      "days": [
+        "Day 2"
+      ]
+    },
+    {
+      "name": "Chest Press Machine",
+      "defaultSets": 3,
+      "defaultRepRange": "8-12",
+      "days": [
+        "Day 4"
+      ]
+    },
+    {
+      "name": "Days",
+      "defaultSets": 3,
+      "defaultRepRange": "",
+      "days": []
+    },
+    {
+      "name": "Dumbbell Side Lateral Raise",
+      "defaultSets": 3,
+      "defaultRepRange": "8\u201310",
+      "days": [
+        "Day 1"
+      ]
+    },
+    {
+      "name": "Hip Abduction",
+      "defaultSets": 3,
+      "defaultRepRange": "10\u201312",
+      "days": [
+        "Day 5"
+      ]
+    },
+    {
+      "name": "Hip Adduction",
+      "defaultSets": 3,
+      "defaultRepRange": "10\u201312",
+      "days": [
+        "Day 5"
+      ]
+    },
+    {
+      "name": "Lat Pulldown",
+      "defaultSets": 3,
+      "defaultRepRange": "8\u201310",
+      "days": [
+        "Day 2"
+      ]
+    },
+    {
+      "name": "Leg Curl Machine",
+      "defaultSets": 3,
+      "defaultRepRange": "10\u201312",
+      "days": [
+        "Day 5"
+      ]
+    },
+    {
+      "name": "Neck Flexion",
+      "defaultSets": 3,
+      "defaultRepRange": "8-12",
+      "days": [
+        "Day 4"
+      ]
+    },
+    {
+      "name": "Pectoral Fly",
+      "defaultSets": 3,
+      "defaultRepRange": "8\u201312",
+      "days": [
+        "Day 1"
+      ]
+    },
+    {
+      "name": "Preacher Curl",
+      "defaultSets": 3,
+      "defaultRepRange": "8\u201310",
+      "days": [
+        "Day 2",
+        "Day 4"
+      ]
+    },
+    {
+      "name": "Roman Chair",
+      "defaultSets": 3,
+      "defaultRepRange": "12\u201315",
+      "days": [
+        "Day 5"
+      ]
+    },
+    {
+      "name": "Row Machine",
+      "defaultSets": 3,
+      "defaultRepRange": "8\u201310",
+      "days": [
+        "Day 2"
+      ]
+    },
+    {
+      "name": "Seated Chest Press Machine",
+      "defaultSets": 3,
+      "defaultRepRange": "10\u201315",
+      "days": [
+        "Day 1"
+      ]
+    },
+    {
+      "name": "Seated Leg Extension",
+      "defaultSets": 3,
+      "defaultRepRange": "10\u201312",
+      "days": [
+        "Day 5"
+      ]
+    },
+    {
+      "name": "Seated Shoulder Press",
+      "defaultSets": 3,
+      "defaultRepRange": "10\u201312",
+      "days": [
+        "Day 1"
+      ]
+    },
+    {
+      "name": "Squats",
+      "defaultSets": 3,
+      "defaultRepRange": "8\u201310",
+      "days": [
+        "Day 5"
+      ]
+    },
+    {
+      "name": "Squats Leg Press",
+      "defaultSets": 3,
+      "defaultRepRange": "8\u201310",
+      "days": [
+        "Day 5"
+      ]
+    },
+    {
+      "name": "Tricep Cable Pushdown",
+      "defaultSets": 3,
+      "defaultRepRange": "10\u201312",
+      "days": [
+        "Day 1"
+      ]
+    },
+    {
+      "name": "Tricep Cable Pushdown Rope",
+      "defaultSets": 3,
+      "defaultRepRange": "10\u201312",
+      "days": [
+        "Day 1"
+      ]
+    },
+    {
+      "name": "Tricep Dips (Assisted)",
+      "defaultSets": 3,
+      "defaultRepRange": "8\u201310",
+      "days": [
+        "Day 1",
+        "Day 4"
+      ]
+    },
+    {
+      "name": "Wide Grip Pull-up (Assisted)",
+      "defaultSets": 3,
+      "defaultRepRange": "10\u201315",
+      "days": [
+        "Day 2",
+        "Day 4"
+      ]
+    }
+  ]
+}

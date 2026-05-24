@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0b0d10">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Workout Tracker</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Toast -->
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<!-- TODAY view ===================================================== -->
+<section id="view-today" class="view active">
+  <header class="topbar">
+    <div>
+      <div class="topbar-title">Today</div>
+      <div class="topbar-sub" id="today-date"></div>
+    </div>
+    <button class="btn btn-ghost" id="btn-new-workout">New</button>
+  </header>
+
+  <div id="active-workout" class="container hidden">
+    <div class="card workout-meta">
+      <div class="row">
+        <label class="col">
+          <span class="label">Date</span>
+          <input type="date" id="workout-date">
+        </label>
+        <label class="col">
+          <span class="label">Day</span>
+          <select id="workout-day">
+            <option value="">(no template)</option>
+          </select>
+        </label>
+      </div>
+      <label>
+        <span class="label">Notes</span>
+        <input type="text" id="workout-notes" placeholder="energy, sleep, anything to remember">
+      </label>
+    </div>
+
+    <div id="entries"></div>
+
+    <div class="row actions">
+      <button class="btn btn-secondary" id="btn-add-exercise">+ Exercise</button>
+      <button class="btn btn-primary" id="btn-save-workout">Save workout</button>
+    </div>
+    <div class="row actions">
+      <button class="btn btn-ghost danger" id="btn-discard-workout">Discard</button>
+    </div>
+  </div>
+
+  <div id="no-workout" class="container empty">
+    <div class="empty-icon">▶</div>
+    <h2>No workout in progress</h2>
+    <p>Tap <strong>New</strong> to start logging today's session.</p>
+    <button class="btn btn-primary btn-large" id="btn-new-workout-empty">Start workout</button>
+  </div>
+</section>
+
+<!-- HISTORY view =================================================== -->
+<section id="view-history" class="view">
+  <header class="topbar">
+    <div class="topbar-title">History</div>
+    <select id="history-filter" class="topbar-action">
+      <option value="">All exercises</option>
+    </select>
+  </header>
+  <div id="history-list" class="container"></div>
+</section>
+
+<!-- PROGRESS view ================================================== -->
+<section id="view-progress" class="view">
+  <header class="topbar">
+    <div class="topbar-title">Progress</div>
+  </header>
+  <div class="container">
+    <div class="card">
+      <h3>Total weekly volume</h3>
+      <div class="chart-wrap"><canvas id="chart-total-volume"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Per-exercise progress</h3>
+      <select id="progress-exercise"></select>
+      <div class="metrics" id="progress-metrics"></div>
+      <div class="chart-wrap"><canvas id="chart-exercise-volume"></canvas></div>
+      <div class="chart-wrap"><canvas id="chart-exercise-1rm"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Week-over-week table</h3>
+      <div class="table-scroll"><table id="wow-table"></table></div>
+    </div>
+  </div>
+</section>
+
+<!-- LIBRARY view =================================================== -->
+<section id="view-library" class="view">
+  <header class="topbar">
+    <div class="topbar-title">Exercises</div>
+    <button class="btn btn-ghost" id="btn-add-library">+ New</button>
+  </header>
+  <div class="container">
+    <input type="search" id="library-search" placeholder="Search exercises" class="search">
+    <div id="library-list"></div>
+  </div>
+</section>
+
+<!-- SETTINGS view ================================================== -->
+<section id="view-settings" class="view">
+  <header class="topbar"><div class="topbar-title">Settings</div></header>
+  <div class="container">
+    <div class="card">
+      <h3>Units</h3>
+      <label class="row toggle">
+        <span>Weight unit</span>
+        <select id="setting-units">
+          <option value="lbs">lbs</option>
+          <option value="kg">kg</option>
+        </select>
+      </label>
+    </div>
+    <div class="card">
+      <h3>Theme</h3>
+      <label class="row toggle">
+        <span>Appearance</span>
+        <select id="setting-theme">
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+          <option value="auto">Match system</option>
+        </select>
+      </label>
+    </div>
+    <div class="card">
+      <h3>Backup</h3>
+      <p class="muted">Your data lives in this browser only. Export regularly.</p>
+      <div class="row actions">
+        <button class="btn btn-secondary" id="btn-export">Export JSON</button>
+        <button class="btn btn-secondary" id="btn-import">Import JSON</button>
+        <input type="file" id="import-file" accept="application/json" hidden>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Danger zone</h3>
+      <button class="btn btn-ghost danger" id="btn-wipe">Erase all data</button>
+    </div>
+    <div class="card muted small">
+      <p>Volume = Load × Reps, summed across all sets.</p>
+      <p>Estimated 1RM uses the Brzycki formula: load × 36 / (37 − reps).</p>
+      <p>Built for <span id="user-email">jacob</span>. v<span id="app-version"></span></p>
+    </div>
+  </div>
+</section>
+
+<!-- Exercise picker modal ========================================== -->
+<div id="picker-modal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-card">
+    <header class="modal-head">
+      <div class="topbar-title">Pick exercise</div>
+      <button class="btn btn-ghost" id="btn-picker-close">Close</button>
+    </header>
+    <input type="search" id="picker-search" placeholder="Search or create new" class="search">
+    <div id="picker-list" class="picker-list"></div>
+    <button class="btn btn-primary" id="btn-picker-create">+ Create "<span id="picker-create-name"></span>"</button>
+  </div>
+</div>
+
+<!-- Library edit modal ============================================= -->
+<div id="exercise-edit-modal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-card">
+    <header class="modal-head">
+      <div class="topbar-title" id="exercise-edit-title">New exercise</div>
+      <button class="btn btn-ghost" id="btn-exercise-edit-close">Close</button>
+    </header>
+    <label>
+      <span class="label">Name</span>
+      <input type="text" id="exercise-edit-name">
+    </label>
+    <label>
+      <span class="label">Default sets</span>
+      <input type="number" id="exercise-edit-sets" min="1" max="10" step="1" inputmode="numeric">
+    </label>
+    <label>
+      <span class="label">Default rep range</span>
+      <input type="text" id="exercise-edit-reprange" placeholder="e.g. 8–12">
+    </label>
+    <label>
+      <span class="label">Day tags</span>
+      <input type="text" id="exercise-edit-days" placeholder="Day 1, Day 4">
+    </label>
+    <div class="row actions">
+      <button class="btn btn-ghost danger" id="btn-exercise-edit-delete">Delete</button>
+      <button class="btn btn-primary" id="btn-exercise-edit-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bottom navigation ============================================== -->
+<nav class="bottom-nav">
+  <button class="nav-btn active" data-view="today"><span class="nav-icon">▣</span><span>Today</span></button>
+  <button class="nav-btn" data-view="history"><span class="nav-icon">≡</span><span>History</span></button>
+  <button class="nav-btn" data-view="progress"><span class="nav-icon">◢</span><span>Progress</span></button>
+  <button class="nav-btn" data-view="library"><span class="nav-icon">◉</span><span>Library</span></button>
+  <button class="nav-btn" data-view="settings"><span class="nav-icon">⚙</span><span>Settings</span></button>
+</nav>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
