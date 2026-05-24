@@ -566,7 +566,10 @@ function renderHistory() {
             <div class="history-item-date">${prettyDate(w.date)}</div>
             <div class="history-item-day">${escapeHtml(w.day || "")} ${w.notes ? "· " + escapeHtml(w.notes) : ""}</div>
           </div>
-          <button class="icon-btn danger btn-del-workout" aria-label="Delete">×</button>
+          <div class="history-item-actions">
+            <button class="icon-btn btn-edit-workout" aria-label="Edit">✎</button>
+            <button class="icon-btn danger btn-del-workout" aria-label="Delete">×</button>
+          </div>
         </div>
         <div class="history-item-stats">
           <span>Volume <strong>${fmt(totalVol)}</strong> ${state.settings.units}</span>
@@ -579,8 +582,13 @@ function renderHistory() {
 
   list.querySelectorAll(".history-item").forEach(el => {
     el.onclick = (e) => {
-      if (e.target.closest(".btn-del-workout")) return;
+      if (e.target.closest(".btn-del-workout") || e.target.closest(".btn-edit-workout")) return;
       el.classList.toggle("open");
+    };
+    el.querySelector(".btn-edit-workout").onclick = (e) => {
+      e.stopPropagation();
+      activeWorkoutId = el.dataset.id;
+      showView("today");
     };
     el.querySelector(".btn-del-workout").onclick = (e) => {
       e.stopPropagation();

@@ -241,7 +241,8 @@ select {
   margin-bottom: 10px;
   cursor: pointer;
 }
-.history-item-head { display: flex; justify-content: space-between; align-items: baseline; }
+.history-item-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.history-item-actions { display: flex; gap: 2px; flex-shrink: 0; }
 .history-item-date { font-weight: 600; font-size: 16px; }
 .history-item-day { color: var(--text-dim); font-size: 13px; }
 .history-item-stats { display: flex; gap: 16px; font-size: 13px; color: var(--text-dim); margin-top: 6px; }
