@@ -10,7 +10,7 @@ const SEED = {
     "Day 2": ["Row Machine","Wide Grip Pull-up (Assisted)","Preacher Curl","Lat Pulldown","Barbell Shrugs","Cable Ab Curl","Cable Face Pull"],
     "Day 3": [],
     "Day 4": ["Chest Press Machine","Wide Grip Pull-up (Assisted)","Neck Flexion","Tricep Dips (Assisted)","Preacher Curl"],
-    "Day 5": ["Squats","Barbell Shrugs","Roman Chair","Leg Curl Machine","Hip Abduction","Ab Twist Machine","Seated Leg Extension","Hip Adduction","Squats Leg Press","Ab Oblique Crunch Machine"],
+    "Day 5": ["Squats","Barbell Shrugs","Roman Chair","Leg Curl Machine","Hip Abduction","Ab Twist Machine","Seated Leg Extension","Hip Adduction","Squats Leg Press","Ab Oblique Crunch Machine","Calf Raises"],
   },
   exercises: [
     {name:"Ab Oblique Crunch Machine", defaultSets:3, defaultRepRange:"10–12", days:["Day 5"]},
@@ -18,6 +18,7 @@ const SEED = {
     {name:"Barbell Shrugs", defaultSets:3, defaultRepRange:"8–10", days:["Day 2","Day 5"]},
     {name:"Cable Ab Curl", defaultSets:3, defaultRepRange:"10–15", days:["Day 2"]},
     {name:"Cable Face Pull", defaultSets:3, defaultRepRange:"10–15", days:["Day 2"]},
+    {name:"Calf Raises", defaultSets:3, defaultRepRange:"10–15", days:["Day 5"]},
     {name:"Chest Press Machine", defaultSets:3, defaultRepRange:"8-12", days:["Day 4"]},
     {name:"Dumbbell Side Lateral Raise", defaultSets:3, defaultRepRange:"8–10", days:["Day 1"]},
     {name:"Hip Abduction", defaultSets:3, defaultRepRange:"10–12", days:["Day 5"]},
@@ -40,6 +41,22 @@ const SEED = {
     {name:"Wide Grip Pull-up (Assisted)", defaultSets:3, defaultRepRange:"10–15", days:["Day 2","Day 4"]},
   ],
 };
+
+// Historical sessions imported from the original Google Sheets workout plan.
+// Auto-loaded on first launch (or when workouts is empty and history hasn't been seeded yet).
+const HISTORY = [
+  {d:"2026-04-13",day:"Day 1",e:[{n:"Seated Chest Press Machine",s:[[100,11],[100,9],[115,8]]},{n:"Tricep Cable Pushdown",s:[[80,8],[80,8],[80,6]]},{n:"Seated Shoulder Press",s:[[30,8],[65,6],[55,8]]},{n:"Tricep Dips (Assisted)",s:[[50,7],[70,7],[70,8]]},{n:"Pectoral Fly",s:[[100,10],[115,10],[115,12]]}]},
+  {d:"2026-04-14",day:"Day 2",e:[{n:"Row Machine",s:[[100,12],[115,10],[115,9]]},{n:"Lat Pulldown",s:[[140,7],[140,8],[140,8]]},{n:"Barbell Shrugs",s:[[90,13],[90,14],[100,12]]},{n:"Cable Ab Curl",s:[[57.5,12],[72.5,10],[80,9]]}]},
+  {d:"2026-04-16",day:"Day 4",e:[{n:"Chest Press Machine",s:[[100,13],[115,9],[130,7]]},{n:"Neck Flexion",s:[[25,8],[25,10],[25,10]]},{n:"Tricep Dips (Assisted)",s:[[55,6],[55,5],[55,7]]},{n:"Preacher Curl",s:[[95,12],[95,12],[110,10]]}]},
+  {d:"2026-04-17",day:"Day 5",e:[{n:"Squats",s:[[20,8],[40,8],[50,8]]},{n:"Leg Curl Machine",s:[[120,10],[130,11],[130,12]]},{n:"Hip Abduction",s:[[235,11],[235,11],[220,10]]}]},
+  {d:"2026-04-20",day:"Day 1",e:[{n:"Seated Chest Press Machine",s:[[115,12],[130,8],[145,6]]},{n:"Tricep Cable Pushdown",s:[[52.5,6],[42.5,12],[47.5,12]]},{n:"Seated Shoulder Press",s:[[65,10],[65,8],[55,7]]},{n:"Tricep Dips (Assisted)",s:[[55,6],[55,6],[55,9]]},{n:"Pectoral Fly",s:[[115,12],[130,8],[165,3]]},{n:"Ab Twist Machine",s:[[130,11],[130,11],[150,10]]}]},
+  {d:"2026-04-21",day:"Day 2",e:[{n:"Row Machine",s:[[115,14],[130,12],[145,10]]},{n:"Preacher Curl",s:[[110,10],[110,9],[110,9]]},{n:"Lat Pulldown",s:[[140,9],[180,3],[140,9]]},{n:"Barbell Shrugs",s:[[90,14],[110,12],[110,10]]}]},
+  {d:"2026-04-23",day:"Day 4",e:[{n:"Chest Press Machine",s:[[130,10],[130,10],[145,8]]},{n:"Wide Grip Pull-up (Assisted)",s:[[40,8],[40,5],[40,5]]},{n:"Neck Flexion",s:[[25,12],[25,12],[25,12]]},{n:"Tricep Dips (Assisted)",s:[[40,8],[40,9],[40,10]]},{n:"Preacher Curl",s:[[125,12],[125,7],[110,10]]}]},
+  {d:"2026-04-24",day:"Day 5",e:[{n:"Squats",s:[[45,10],[65,8],[85,6]]},{n:"Seated Leg Extension",s:[[160,10],[160,10],[145,10]]},{n:"Roman Chair",s:[[25,12],[25,12],[25,12]]},{n:"Leg Curl Machine",s:[[175,9],[160,10],[160,9]]},{n:"Hip Abduction",s:[[235,10],[235,10],[220,12]]},{n:"Hip Adduction",s:[[250,14],[305,18],[305,11]]}]},
+  {d:"2026-04-27",day:"Day 1",e:[{n:"Seated Chest Press Machine",s:[[145,10],[145,10],[160,6]]},{n:"Tricep Cable Pushdown Rope",s:[[52.5,12],[42.5,10],[42.5,11]]},{n:"Seated Shoulder Press",s:[[65,9],[65,8],[65,7]]},{n:"Dumbbell Side Lateral Raise",s:[[20,7],[15,10],[15,10]]},{n:"Pectoral Fly",s:[[160,5],[150,6],[145,8]]},{n:"Ab Twist Machine",s:[[130,11],[145,10],[150,10]]}]},
+  {d:"2026-04-28",day:"Day 2",e:[{n:"Row Machine",s:[[145,10],[145,10],[160,12]]},{n:"Wide Grip Pull-up (Assisted)",s:[[40,6]]},{n:"Preacher Curl",s:[[125,12],[125,8],[125,7]]},{n:"Barbell Shrugs",s:[[110,15],[110,12],[110,13]]},{n:"Cable Ab Curl",s:[[87.5,10],[80,13],[80,12]]}]},
+  {d:"2026-05-01",day:"Day 5",e:[{n:"Squats Leg Press",s:[[170,12],[190,13],[250,9]]},{n:"Barbell Shrugs",s:[[120,10],[120,10],[120,10]]},{n:"Roman Chair",s:[[0,10],[35,10],[35,10]]},{n:"Leg Curl Machine",s:[[160,10],[160,8],[160,10]]},{n:"Hip Abduction",s:[[250,12],[250,12],[250,10]]},{n:"Ab Oblique Crunch Machine",s:[[10,10],[10,10],[10,10]]}]},
+];
 
 /* ───────── Helpers ───────── */
 const $ = (sel, root=document) => root.querySelector(sel);
@@ -112,23 +129,70 @@ function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 function defaultState() {
-  return {
+  const s = {
     schemaVersion: 1,
     exercises: SEED.exercises.map(e => ({ id: uid(), ...e })),
-    days: { ...SEED.days },
+    days: JSON.parse(JSON.stringify(SEED.days)),
     workouts: [],
     settings: { units: "lbs", theme: "dark" },
+    seedHistoryLoaded: false,
   };
+  loadHistoryInto(s);
+  return s;
 }
 function migrate(s) {
   s.schemaVersion ??= 1;
   s.exercises ??= [];
-  s.days ??= { ...SEED.days };
+  s.days ??= JSON.parse(JSON.stringify(SEED.days));
   s.workouts ??= [];
   s.settings ??= { units: "lbs", theme: "dark" };
   s.settings.units ??= "lbs";
   s.settings.theme ??= "dark";
+  s.seedHistoryLoaded ??= false;
+
+  // Sync any new seed exercises into existing state (idempotent, name-matched)
+  SEED.exercises.forEach(seedEx => {
+    if (!s.exercises.find(e => e.name.toLowerCase() === seedEx.name.toLowerCase())) {
+      s.exercises.push({ id: uid(), ...seedEx });
+    }
+  });
+  // Sync new seed day entries (e.g. Calf Raises added to Day 5)
+  Object.keys(SEED.days).forEach(day => {
+    s.days[day] = s.days[day] || [];
+    SEED.days[day].forEach(name => {
+      if (!s.days[day].some(n => n.toLowerCase() === name.toLowerCase())) {
+        s.days[day].push(name);
+      }
+    });
+  });
+
+  // Auto-load history once if no workouts have been logged
+  if (!s.seedHistoryLoaded && s.workouts.length === 0) loadHistoryInto(s);
   return s;
+}
+
+// Populate state.workouts from the inlined HISTORY array, resolving exercise
+// names against state.exercises (creating any that don't exist).
+function loadHistoryInto(s) {
+  const byName = (name) => {
+    let ex = s.exercises.find(e => e.name.toLowerCase() === name.toLowerCase());
+    if (!ex) { ex = { id: uid(), name, defaultSets: 3, defaultRepRange: "", days: [] }; s.exercises.push(ex); }
+    return ex;
+  };
+  HISTORY.forEach((h, i) => {
+    s.workouts.push({
+      id: uid(),
+      date: h.d,
+      day: h.day,
+      notes: "",
+      entries: h.e.map(en => ({
+        exerciseId: byName(en.n).id,
+        sets: en.s.map(([load, reps]) => ({ load, reps })),
+      })),
+      createdAt: Date.now() + i,
+    });
+  });
+  s.seedHistoryLoaded = true;
 }
 
 let state = loadState();
@@ -348,7 +412,6 @@ function renderEntry(entry, idx) {
     renderToday();
   };
   div.querySelector(".btn-remove-entry").onclick = () => {
-    if (!confirm(`Remove ${ex.name} from this workout?`)) return;
     w.entries.splice(idx, 1);
     saveState();
     renderToday();
