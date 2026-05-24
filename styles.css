@@ -298,6 +298,50 @@ select {
   margin-right: 4px;
 }
 
+/* Health / Nutrition =================================== */
+.balance-card { background: linear-gradient(135deg, var(--bg-elev) 0%, var(--bg-elev-2) 100%); }
+.balance {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin: 14px 0 12px;
+}
+.bal-item { flex: 1; text-align: center; padding: 10px; background: var(--bg-elev-2); border-radius: var(--radius-sm); }
+.bal-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; }
+.bal-value { font-size: 26px; font-weight: 700; margin: 4px 0; }
+.bal-sub { font-size: 11px; color: var(--text-dim); }
+.bal-arrow { display: flex; align-items: center; color: var(--text-dim); font-size: 12px; padding: 0 4px; }
+.bal-net {
+  text-align: center;
+  font-weight: 600;
+  font-size: 15px;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev-2);
+}
+.bal-net.deficit { color: var(--success); background: color-mix(in srgb, var(--success) 12%, var(--bg-elev-2)); }
+.bal-net.surplus { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, var(--bg-elev-2)); }
+.bal-net.muted { color: var(--text-dim); font-weight: 500; }
+
+.macros-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.macros-grid label { margin: 0; }
+.macros-grid input { text-align: center; font-size: 17px; font-weight: 600; padding: 10px 6px; }
+.macro-kcal { font-size: 11px; color: var(--text-dim); text-align: center; margin-top: 4px; }
+.macro-total {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+}
+.macro-total strong { font-size: 18px; }
+
+.setup-list { padding-left: 20px; margin: 0; font-size: 13px; line-height: 1.55; }
+.setup-list li { margin-bottom: 8px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--bg-elev-2); padding: 1px 5px; border-radius: 4px; }
+
 /* Bottom nav ========================================== */
 .bottom-nav {
   position: fixed;

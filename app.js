@@ -84,6 +84,57 @@ const oneRM = (load, reps) => {
 };
 const setVolume = (load, reps) => parseNum(load) * parseNum(reps);
 
+// Body / nutrition math
+const ACTIVITY_MULT = {
+  sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, very_active: 1.9
+};
+function calcBMI(p) {
+  if (!p.height || !p.weight) return 0;
+  return 703 * p.weight / (p.height * p.height); // imperial
+}
+function bmiCategory(bmi) {
+  if (!bmi) return "";
+  if (bmi < 18.5) return "Underweight";
+  if (bmi < 25) return "Normal";
+  if (bmi < 30) return "Overweight";
+  return "Obese";
+}
+function calcBMR(p) {
+  if (!p.height || !p.weight || !p.age) return 0;
+  const wKg = p.weight / 2.2046226218;
+  const hCm = p.height * 2.54;
+  const base = 10 * wKg + 6.25 * hCm - 5 * p.age;
+  return base + (p.sex === "female" ? -161 : 5);
+}
+function calcTDEE(p) {
+  return calcBMR(p) * (ACTIVITY_MULT[p.activity] || 1.55);
+}
+function macrosToKcal(m) {
+  return (parseNum(m.protein)) * 4 + (parseNum(m.carbs)) * 4 + (parseNum(m.fat)) * 9;
+}
+function getNutritionFor(date) {
+  return state.nutrition.find(n => n.date === date) ||
+    { date, protein: "", carbs: "", fat: "", notes: "" };
+}
+function upsertNutrition(date, patch) {
+  let n = state.nutrition.find(x => x.date === date);
+  if (!n) {
+    n = { date, protein: "", carbs: "", fat: "", notes: "" };
+    state.nutrition.push(n);
+  }
+  Object.assign(n, patch);
+  saveState();
+  return n;
+}
+function relativeTime(ts) {
+  if (!ts) return "Never synced";
+  const diff = (Date.now() - ts) / 1000;
+  if (diff < 60) return "Just now";
+  if (diff < 3600) return `${Math.floor(diff/60)} min ago`;
+  if (diff < 86400) return `${Math.floor(diff/3600)} hr ago`;
+  return `${Math.floor(diff/86400)} days ago`;
+}
+
 // ISO week (Mon-start). Returns {year, week, key:"YYYY-Www", label}
 function isoWeek(dateStr) {
   const d = new Date(dateStr + "T00:00:00");
@@ -128,13 +179,19 @@ function loadState() {
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
+function defaultProfile() {
+  return { height: 70, weight: 175, age: 28, sex: "male", activity: "moderate" };
+}
 function defaultState() {
   const s = {
     schemaVersion: 1,
     exercises: SEED.exercises.map(e => ({ id: uid(), ...e })),
     days: JSON.parse(JSON.stringify(SEED.days)),
     workouts: [],
-    settings: { units: "lbs", theme: "dark" },
+    settings: { units: "lbs", theme: "dark", gistId: "" },
+    profile: defaultProfile(),
+    nutrition: [],
+    health: { lastFetch: null, data: null, lastError: null },
     seedHistoryLoaded: false,
   };
   loadHistoryInto(s);
@@ -145,9 +202,13 @@ function migrate(s) {
   s.exercises ??= [];
   s.days ??= JSON.parse(JSON.stringify(SEED.days));
   s.workouts ??= [];
-  s.settings ??= { units: "lbs", theme: "dark" };
+  s.settings ??= { units: "lbs", theme: "dark", gistId: "" };
   s.settings.units ??= "lbs";
   s.settings.theme ??= "dark";
+  s.settings.gistId ??= "";
+  s.profile = Object.assign(defaultProfile(), s.profile || {});
+  s.nutrition ??= [];
+  s.health ??= { lastFetch: null, data: null, lastError: null };
   s.seedHistoryLoaded ??= false;
 
   // Sync any new seed exercises into existing state (idempotent, name-matched)
@@ -216,6 +277,7 @@ function showView(name) {
   if (name === "history") renderHistory();
   if (name === "progress") renderProgress();
   if (name === "library") renderLibrary();
+  if (name === "health") renderHealth();
   if (name === "settings") renderSettings();
 }
 
@@ -848,10 +910,145 @@ function openExerciseEditor(id) {
   setTimeout(() => nameInp.focus(), 100);
 }
 
+/* ───────── Health view ───────── */
+let healthCurrentDate = null;
+
+function renderHealth() {
+  const date = healthCurrentDate || todayISO();
+  healthCurrentDate = date;
+
+  $("#health-date").value = date;
+  $("#balance-date-label").textContent = prettyDate(date);
+
+  // Macros
+  const n = getNutritionFor(date);
+  $("#m-protein").value = n.protein;
+  $("#m-carbs").value = n.carbs;
+  $("#m-fat").value = n.fat;
+  $("#m-notes").value = n.notes;
+  updateMacroDisplay(n);
+
+  // Profile
+  const p = state.profile;
+  $("#p-height").value = p.height;
+  $("#p-weight").value = p.weight;
+  $("#p-age").value = p.age;
+  $("#p-sex").value = p.sex;
+  $("#p-activity").value = p.activity;
+  updateProfileDisplay(p);
+
+  // Health snapshot
+  renderHealthSnapshot();
+
+  // Energy balance
+  updateBalance(date, n);
+}
+
+function updateMacroDisplay(n) {
+  const p = parseNum(n.protein), c = parseNum(n.carbs), f = parseNum(n.fat);
+  $("#m-protein-kcal").textContent = `${fmt(p*4)} kcal`;
+  $("#m-carbs-kcal").textContent = `${fmt(c*4)} kcal`;
+  $("#m-fat-kcal").textContent = `${fmt(f*9)} kcal`;
+  $("#macro-total").textContent = `${fmt(macrosToKcal(n))} kcal`;
+}
+
+function updateProfileDisplay(p) {
+  const bmi = calcBMI(p);
+  const bmr = calcBMR(p);
+  const tdee = calcTDEE(p);
+  $("#p-bmi").textContent = bmi ? bmi.toFixed(1) : "—";
+  $("#p-bmi-cat").textContent = bmiCategory(bmi);
+  $("#p-bmr").textContent = bmr ? fmt(bmr) : "—";
+  $("#p-tdee").textContent = tdee ? fmt(tdee) : "—";
+}
+
+function updateBalance(date, n) {
+  const intake = macrosToKcal(n);
+  const tdee = calcTDEE(state.profile);
+  // If we have today's active-energy from Health, use BMR + active. Else fall back to TDEE.
+  let outputKcal = tdee;
+  let outputLabel = "TDEE estimate";
+  const h = state.health.data;
+  if (h && date === todayISO() && h.activeEnergyToday != null) {
+    const bmr = calcBMR(state.profile);
+    outputKcal = bmr + parseNum(h.activeEnergyToday);
+    outputLabel = `BMR + ${fmt(h.activeEnergyToday)} active`;
+  }
+  $("#bal-intake").textContent = fmt(intake);
+  $("#bal-output").textContent = fmt(outputKcal);
+  $("#bal-output-sub").textContent = outputLabel;
+
+  const net = intake - outputKcal;
+  const netEl = $("#bal-net");
+  if (intake === 0) {
+    netEl.textContent = "Log macros to see balance";
+    netEl.className = "bal-net muted";
+  } else if (Math.abs(net) < 50) {
+    netEl.textContent = `${fmt(net)} kcal · maintenance`;
+    netEl.className = "bal-net";
+  } else if (net < 0) {
+    netEl.textContent = `${fmt(net)} kcal · deficit`;
+    netEl.className = "bal-net deficit";
+  } else {
+    netEl.textContent = `+${fmt(net)} kcal · surplus`;
+    netEl.className = "bal-net surplus";
+  }
+}
+
+function renderHealthSnapshot() {
+  const configured = !!state.settings.gistId;
+  $("#health-unconfigured").classList.toggle("hidden", configured);
+  $("#health-snapshot").classList.toggle("hidden", !configured);
+  if (!configured) return;
+
+  const h = state.health.data;
+  $("#h-resting-hr").textContent = h?.restingHR != null ? Math.round(h.restingHR) : "—";
+  $("#h-sleep").textContent = h?.sleepHours != null ? h.sleepHours.toFixed(1) : "—";
+  $("#h-active").textContent = h?.activeEnergyToday != null ? fmt(h.activeEnergyToday) : "—";
+  $("#h-steps").textContent = h?.stepsToday != null ? fmt(h.stepsToday) : "—";
+
+  let updated = relativeTime(state.health.lastFetch);
+  if (state.health.lastError) updated += ` · ⚠ ${state.health.lastError}`;
+  $("#h-updated").textContent = updated;
+}
+
+/* Gist fetch — pulls latest Apple Health snapshot pushed by the iOS Shortcut */
+async function syncHealth(force = false) {
+  if (!state.settings.gistId) return;
+  if (!force && state.health.lastFetch && (Date.now() - state.health.lastFetch < 5 * 60 * 1000)) {
+    return; // 5-min cache
+  }
+  try {
+    const res = await fetch(`https://api.github.com/gists/${state.settings.gistId}`, {
+      headers: { "Accept": "application/vnd.github+json" },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const gist = await res.json();
+    const file = gist.files["health.json"] || Object.values(gist.files).find(f => f.filename.endsWith(".json"));
+    if (!file) throw new Error("No JSON file in gist");
+    const text = file.truncated
+      ? await fetch(file.raw_url).then(r => r.text())
+      : file.content;
+    const data = JSON.parse(text);
+    state.health.data = data;
+    state.health.lastFetch = Date.now();
+    state.health.lastError = null;
+    saveState();
+    renderHealthSnapshot();
+    updateBalance(healthCurrentDate || todayISO(), getNutritionFor(healthCurrentDate || todayISO()));
+  } catch (e) {
+    console.error("Health sync failed:", e);
+    state.health.lastError = e.message;
+    saveState();
+    renderHealthSnapshot();
+  }
+}
+
 /* ───────── Settings ───────── */
 function renderSettings() {
   $("#setting-units").value = state.settings.units;
   $("#setting-theme").value = state.settings.theme;
+  $("#setting-gist-id").value = state.settings.gistId || "";
   $("#app-version").textContent = APP_VERSION;
 }
 
@@ -932,6 +1129,52 @@ function bindEvents() {
 
   $("#setting-units").onchange = e => { state.settings.units = e.target.value; saveState(); renderToday(); };
   $("#setting-theme").onchange = e => { state.settings.theme = e.target.value; saveState(); applyTheme(); };
+  $("#btn-open-library").onclick = () => showView("library");
+  $("#setting-gist-id").addEventListener("input", e => {
+    state.settings.gistId = e.target.value.trim();
+    saveState();
+    const status = $("#setting-gist-status");
+    status.textContent = state.settings.gistId ? "Saved. Switch to Health to test." : "";
+  });
+  $("#btn-show-shortcut-help").onclick = (e) => {
+    e.preventDefault();
+    $("#shortcut-help").classList.toggle("hidden");
+  };
+
+  // Health view inputs
+  $("#health-date").addEventListener("change", e => {
+    healthCurrentDate = e.target.value;
+    renderHealth();
+  });
+  ["protein","carbs","fat"].forEach(k => {
+    $(`#m-${k}`).addEventListener("input", e => {
+      const date = healthCurrentDate || todayISO();
+      const n = upsertNutrition(date, { [k]: e.target.value });
+      updateMacroDisplay(n);
+      updateBalance(date, n);
+    });
+  });
+  $("#m-notes").addEventListener("input", e => {
+    upsertNutrition(healthCurrentDate || todayISO(), { notes: e.target.value });
+  });
+  ["height","weight","age"].forEach(k => {
+    $(`#p-${k}`).addEventListener("input", e => {
+      state.profile[k] = parseNum(e.target.value);
+      saveState();
+      updateProfileDisplay(state.profile);
+      updateBalance(healthCurrentDate || todayISO(), getNutritionFor(healthCurrentDate || todayISO()));
+    });
+  });
+  ["sex","activity"].forEach(k => {
+    $(`#p-${k}`).addEventListener("change", e => {
+      state.profile[k] = e.target.value;
+      saveState();
+      updateProfileDisplay(state.profile);
+      updateBalance(healthCurrentDate || todayISO(), getNutritionFor(healthCurrentDate || todayISO()));
+    });
+  });
+  $("#btn-health-refresh").onclick = () => syncHealth(true);
+
   $("#btn-export").onclick = exportJSON;
   $("#btn-import").onclick = () => $("#import-file").click();
   $("#import-file").onchange = e => { if (e.target.files[0]) importJSON(e.target.files[0]); };
@@ -965,6 +1208,8 @@ function bindEvents() {
 function init() {
   applyTheme();
   bindEvents();
+  // Kick off a background Health sync if a Gist is configured
+  if (state.settings.gistId) syncHealth();
   // If there's an in-progress workout (last one with empty entries from a refresh), revive it
   const inProgress = state.workouts.find(w => w.date === todayISO() && w.entries.length > 0 && w.entries.some(e => e.sets.some(s => s.load === "" && s.reps === "")));
   // Don't auto-revive — make user explicitly start. activeWorkoutId stays null.

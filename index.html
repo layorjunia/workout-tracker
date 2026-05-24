@@ -99,6 +99,120 @@
   </div>
 </section>
 
+<!-- HEALTH view ==================================================== -->
+<section id="view-health" class="view">
+  <header class="topbar">
+    <div class="topbar-title">Health</div>
+    <input type="date" id="health-date" class="topbar-action">
+  </header>
+  <div class="container">
+
+    <div class="card balance-card">
+      <h3>Energy balance · <span id="balance-date-label" class="muted"></span></h3>
+      <div class="balance">
+        <div class="bal-item bal-in">
+          <div class="bal-label">Intake</div>
+          <div class="bal-value" id="bal-intake">0</div>
+          <div class="bal-sub">kcal from food</div>
+        </div>
+        <div class="bal-arrow">vs</div>
+        <div class="bal-item bal-out">
+          <div class="bal-label">Output</div>
+          <div class="bal-value" id="bal-output">0</div>
+          <div class="bal-sub" id="bal-output-sub">TDEE estimate</div>
+        </div>
+      </div>
+      <div class="bal-net" id="bal-net">—</div>
+    </div>
+
+    <div class="card">
+      <h3>Macros</h3>
+      <div class="macros-grid">
+        <label>
+          <span class="label">Protein (g)</span>
+          <input type="number" id="m-protein" inputmode="decimal" step="1" min="0">
+          <div class="macro-kcal" id="m-protein-kcal">0 kcal</div>
+        </label>
+        <label>
+          <span class="label">Carbs (g)</span>
+          <input type="number" id="m-carbs" inputmode="decimal" step="1" min="0">
+          <div class="macro-kcal" id="m-carbs-kcal">0 kcal</div>
+        </label>
+        <label>
+          <span class="label">Fat (g)</span>
+          <input type="number" id="m-fat" inputmode="decimal" step="1" min="0">
+          <div class="macro-kcal" id="m-fat-kcal">0 kcal</div>
+        </label>
+      </div>
+      <label style="margin-top:10px">
+        <span class="label">Notes</span>
+        <input type="text" id="m-notes" placeholder="meals, hunger, anything to remember">
+      </label>
+      <div class="macro-total"><span class="label">Total intake</span> <strong id="macro-total">0 kcal</strong></div>
+    </div>
+
+    <div class="card">
+      <h3>Apple Health</h3>
+      <div id="health-unconfigured" class="muted small">
+        <p>Not set up yet. Open <strong>Settings → Apple Health sync</strong> for the one-time Shortcut setup.</p>
+      </div>
+      <div id="health-snapshot" class="hidden">
+        <div class="metrics">
+          <div class="metric"><div class="metric-label">Resting HR</div><div class="metric-value" id="h-resting-hr">—</div></div>
+          <div class="metric"><div class="metric-label">Sleep (hrs)</div><div class="metric-value" id="h-sleep">—</div></div>
+          <div class="metric"><div class="metric-label">Active kcal</div><div class="metric-value" id="h-active">—</div></div>
+          <div class="metric"><div class="metric-label">Steps</div><div class="metric-value" id="h-steps">—</div></div>
+        </div>
+        <div class="muted small" id="h-updated" style="margin-top:8px"></div>
+        <button class="btn btn-secondary" id="btn-health-refresh" style="margin-top:10px;width:100%">Refresh from Gist</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Profile</h3>
+      <div class="row">
+        <label class="col">
+          <span class="label">Height (in)</span>
+          <input type="number" id="p-height" inputmode="decimal" step="0.5" min="36" max="90">
+        </label>
+        <label class="col">
+          <span class="label">Weight (lbs)</span>
+          <input type="number" id="p-weight" inputmode="decimal" step="0.5" min="50" max="500">
+        </label>
+      </div>
+      <div class="row">
+        <label class="col">
+          <span class="label">Age</span>
+          <input type="number" id="p-age" inputmode="numeric" min="10" max="100">
+        </label>
+        <label class="col">
+          <span class="label">Sex</span>
+          <select id="p-sex">
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+          </select>
+        </label>
+      </div>
+      <label>
+        <span class="label">Activity level (outside of lifting)</span>
+        <select id="p-activity">
+          <option value="sedentary">Sedentary (desk job)</option>
+          <option value="light">Light (walking, 1–3 days/wk)</option>
+          <option value="moderate">Moderate (3–5 days/wk)</option>
+          <option value="active">Active (6–7 days/wk)</option>
+          <option value="very_active">Very active (hard daily training)</option>
+        </select>
+      </label>
+      <div class="metrics" style="margin-top:14px">
+        <div class="metric"><div class="metric-label">BMI</div><div class="metric-value" id="p-bmi">—</div><div class="metric-delta" id="p-bmi-cat"></div></div>
+        <div class="metric"><div class="metric-label">BMR</div><div class="metric-value" id="p-bmr">—</div><div class="metric-delta">resting kcal/day</div></div>
+        <div class="metric"><div class="metric-label">TDEE</div><div class="metric-value" id="p-tdee">—</div><div class="metric-delta">w/ activity</div></div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
 <!-- LIBRARY view =================================================== -->
 <section id="view-library" class="view">
   <header class="topbar">
@@ -136,6 +250,31 @@
         </select>
       </label>
     </div>
+    <div class="card">
+      <h3>Exercise library</h3>
+      <button class="btn btn-secondary" id="btn-open-library" style="width:100%">Manage exercises</button>
+    </div>
+
+    <div class="card">
+      <h3>Apple Health sync</h3>
+      <p class="muted small">Syncs HR, sleep, active energy, and steps from your iPhone Health app to a private GitHub Gist a few times a day. <a href="#" id="btn-show-shortcut-help">Show setup instructions →</a></p>
+      <label>
+        <span class="label">Gist ID</span>
+        <input type="text" id="setting-gist-id" placeholder="e.g. 8f3c1a9b2d4e5f6a7b8c9d0e1f2a3b4c" spellcheck="false" autocapitalize="off" autocorrect="off">
+      </label>
+      <div class="muted small" id="setting-gist-status"></div>
+      <div id="shortcut-help" class="hidden" style="margin-top:14px">
+        <h4 style="margin:0 0 6px;font-size:14px">One-time setup</h4>
+        <ol class="setup-list">
+          <li><strong>Make a GitHub Personal Access Token</strong> at <span class="mono">github.com/settings/tokens</span> → "Generate new (classic)" → check the <span class="mono">gist</span> scope. Copy it.</li>
+          <li><strong>Create an empty secret Gist</strong> at <span class="mono">gist.github.com</span>: filename <span class="mono">health.json</span>, content <span class="mono">{}</span>, click "Create secret gist". Copy the long ID from the URL.</li>
+          <li>Paste the Gist ID in the field above.</li>
+          <li><strong>Install the Shortcut</strong> on your iPhone (see README — needs ~6 actions: get health samples, build JSON, PATCH the Gist).</li>
+          <li>Add an <strong>iOS Automation</strong> for "Time of Day" repeating at 7 AM / 12 PM / 6 PM / 10 PM, action = Run Shortcut. Toggle off "Ask Before Running".</li>
+        </ol>
+      </div>
+    </div>
+
     <div class="card">
       <h3>Backup</h3>
       <p class="muted">Your data lives in this browser only. Export regularly.</p>
@@ -205,7 +344,7 @@
   <button class="nav-btn active" data-view="today"><span class="nav-icon">▣</span><span>Today</span></button>
   <button class="nav-btn" data-view="history"><span class="nav-icon">≡</span><span>History</span></button>
   <button class="nav-btn" data-view="progress"><span class="nav-icon">◢</span><span>Progress</span></button>
-  <button class="nav-btn" data-view="library"><span class="nav-icon">◉</span><span>Library</span></button>
+  <button class="nav-btn" data-view="health"><span class="nav-icon">♥</span><span>Health</span></button>
   <button class="nav-btn" data-view="settings"><span class="nav-icon">⚙</span><span>Settings</span></button>
 </nav>
 
