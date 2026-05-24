@@ -1001,11 +1001,25 @@ function renderHealthSnapshot() {
   $("#health-snapshot").classList.toggle("hidden", !configured);
   if (!configured) return;
 
-  const h = state.health.data;
-  $("#h-resting-hr").textContent = h?.restingHR != null ? Math.round(h.restingHR) : "—";
-  $("#h-sleep").textContent = h?.sleepHours != null ? h.sleepHours.toFixed(1) : "—";
-  $("#h-active").textContent = h?.activeEnergyToday != null ? fmt(h.activeEnergyToday) : "—";
-  $("#h-steps").textContent = h?.stepsToday != null ? fmt(h.stepsToday) : "—";
+  const h = state.health.data || {};
+  const set = (sel, val, suffix = "") => {
+    $(sel).textContent = (val == null || val === "" || Number.isNaN(+val))
+      ? "—"
+      : (typeof val === "number" ? (suffix === " bpm" || suffix === " kcal" || suffix === "" && Number.isInteger(val) ? fmt(Math.round(val)) : fmt(val, 1)) : val) + suffix;
+  };
+  set("#h-current-hr", h.currentHR, " bpm");
+  set("#h-resting-hr", h.restingHR, " bpm");
+  set("#h-hrv", h.hrv, " ms");
+  set("#h-spo2", h.bloodOxygen, "%");
+  set("#h-steps", h.stepsToday, "");
+  set("#h-distance", h.distanceMiToday, " mi");
+  set("#h-active", h.activeEnergyToday, " kcal");
+  set("#h-resting-kcal", h.restingEnergyToday, " kcal");
+  set("#h-exercise", h.exerciseMinutesToday, " min");
+  set("#h-stand", h.standHoursToday, " hr");
+  set("#h-sleep", h.sleepHours, " hr");
+  set("#h-weight", h.weightLbs, " lbs");
+  set("#h-bodyfat", h.bodyFatPct, "%");
 
   let updated = relativeTime(state.health.lastFetch);
   if (state.health.lastError) updated += ` · ⚠ ${state.health.lastError}`;

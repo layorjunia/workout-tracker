@@ -157,13 +157,40 @@
         <p>Not set up yet. Open <strong>Settings → Apple Health sync</strong> for the one-time Shortcut setup.</p>
       </div>
       <div id="health-snapshot" class="hidden">
-        <div class="metrics">
-          <div class="metric"><div class="metric-label">Resting HR</div><div class="metric-value" id="h-resting-hr">—</div></div>
-          <div class="metric"><div class="metric-label">Sleep (hrs)</div><div class="metric-value" id="h-sleep">—</div></div>
-          <div class="metric"><div class="metric-label">Active kcal</div><div class="metric-value" id="h-active">—</div></div>
-          <div class="metric"><div class="metric-label">Steps</div><div class="metric-value" id="h-steps">—</div></div>
+        <div class="health-group">
+          <div class="health-group-title">Heart</div>
+          <div class="kv-grid">
+            <div class="kv"><span class="kv-k">Current</span><span class="kv-v" id="h-current-hr">—</span></div>
+            <div class="kv"><span class="kv-k">Resting</span><span class="kv-v" id="h-resting-hr">—</span></div>
+            <div class="kv"><span class="kv-k">HRV</span><span class="kv-v" id="h-hrv">—</span></div>
+            <div class="kv"><span class="kv-k">Blood O₂</span><span class="kv-v" id="h-spo2">—</span></div>
+          </div>
         </div>
-        <div class="muted small" id="h-updated" style="margin-top:8px"></div>
+        <div class="health-group">
+          <div class="health-group-title">Activity · today</div>
+          <div class="kv-grid">
+            <div class="kv"><span class="kv-k">Steps</span><span class="kv-v" id="h-steps">—</span></div>
+            <div class="kv"><span class="kv-k">Distance</span><span class="kv-v" id="h-distance">—</span></div>
+            <div class="kv"><span class="kv-k">Active kcal</span><span class="kv-v" id="h-active">—</span></div>
+            <div class="kv"><span class="kv-k">Resting kcal</span><span class="kv-v" id="h-resting-kcal">—</span></div>
+            <div class="kv"><span class="kv-k">Exercise</span><span class="kv-v" id="h-exercise">—</span></div>
+            <div class="kv"><span class="kv-k">Stand</span><span class="kv-v" id="h-stand">—</span></div>
+          </div>
+        </div>
+        <div class="health-group">
+          <div class="health-group-title">Sleep · last night</div>
+          <div class="kv-grid">
+            <div class="kv"><span class="kv-k">Duration</span><span class="kv-v" id="h-sleep">—</span></div>
+          </div>
+        </div>
+        <div class="health-group">
+          <div class="health-group-title">Body</div>
+          <div class="kv-grid">
+            <div class="kv"><span class="kv-k">Weight</span><span class="kv-v" id="h-weight">—</span></div>
+            <div class="kv"><span class="kv-k">Body fat</span><span class="kv-v" id="h-bodyfat">—</span></div>
+          </div>
+        </div>
+        <div class="muted small" id="h-updated" style="margin-top:10px"></div>
         <button class="btn btn-secondary" id="btn-health-refresh" style="margin-top:10px;width:100%">Refresh from Gist</button>
       </div>
     </div>

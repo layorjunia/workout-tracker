@@ -338,6 +338,13 @@ select {
 }
 .macro-total strong { font-size: 18px; }
 
+.health-group { margin-top: 12px; }
+.health-group-title { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; font-weight: 600; }
+.kv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; background: var(--bg-elev-2); border-radius: var(--radius-sm); padding: 10px 12px; }
+.kv { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 14px; }
+.kv-k { color: var(--text-dim); }
+.kv-v { font-weight: 600; }
+
 .setup-list { padding-left: 20px; margin: 0; font-size: 13px; line-height: 1.55; }
 .setup-list li { margin-bottom: 8px; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--bg-elev-2); padding: 1px 5px; border-radius: 4px; }
