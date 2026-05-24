@@ -1208,6 +1208,14 @@ function bindEvents() {
 function init() {
   applyTheme();
   bindEvents();
+  // Accept ?gist=<id> in the URL to auto-configure on first tap
+  const urlGist = new URL(location.href).searchParams.get("gist");
+  if (urlGist && urlGist !== state.settings.gistId) {
+    state.settings.gistId = urlGist;
+    saveState();
+    toast("Apple Health gist configured");
+    history.replaceState({}, "", location.pathname);
+  }
   // Kick off a background Health sync if a Gist is configured
   if (state.settings.gistId) syncHealth();
   // If there's an in-progress workout (last one with empty entries from a refresh), revive it
