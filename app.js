@@ -113,6 +113,26 @@ const todayISO = () => {
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0,10);
 };
+const nowHHMM = () => {
+  const d = new Date();
+  return d.toTimeString().slice(0, 5); // "HH:MM" in local time
+};
+function durationMinutes(start, end) {
+  if (!start || !end) return 0;
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  let mins = (eh * 60 + em) - (sh * 60 + sm);
+  if (mins < 0) mins += 24 * 60; // wrap past midnight
+  return mins;
+}
+function durationLabel(start, end) {
+  const m = durationMinutes(start, end);
+  if (!m) return "—";
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return r === 0 ? `${h} hr` : `${h}h ${r}m`;
+}
 const parseNum = (v) => {
   const n = parseFloat(v);
   return Number.isFinite(n) ? n : 0;
@@ -273,6 +293,12 @@ function migrate(s) {
     });
   });
 
+  // Add startTime/endTime to any workouts that predate the schema change
+  s.workouts.forEach(w => {
+    w.startTime ??= "";
+    w.endTime ??= "";
+  });
+
   // Auto-load history once if no workouts have been logged
   if (!s.seedHistoryLoaded && s.workouts.length === 0) loadHistoryInto(s);
 
@@ -397,6 +423,8 @@ function startNewWorkout(templateName = "") {
     id: uid(),
     date: todayISO(),
     day: templateName,
+    startTime: nowHHMM(),
+    endTime: "",
     notes: "",
     entries: [],
     createdAt: Date.now(),
@@ -446,6 +474,8 @@ function discardWorkout() {
 function finishWorkout() {
   const w = getWorkout(activeWorkoutId);
   if (!w) return;
+  // Auto-fill end time if user didn't manually set it
+  if (!w.endTime) w.endTime = nowHHMM();
   // Strip out empty sets but keep at least one per entry
   w.entries.forEach(e => {
     e.sets = e.sets.filter((s, i) => i === 0 || s.load !== "" || s.reps !== "");
@@ -466,19 +496,6 @@ function renderToday() {
   $("#today-date").textContent = new Date().toLocaleDateString(undefined,
     {weekday:"long", month:"long", day:"numeric"});
 
-  const dropdown = $("#workout-day");
-  dropdown.innerHTML = '<option value="">(no label)</option>';
-  // Build union of template names + day-labels that already exist on workouts
-  const labels = new Set([
-    ...Object.keys(TEMPLATES),
-    ...state.workouts.map(w => w.day).filter(Boolean),
-  ]);
-  Array.from(labels).sort().forEach(d => {
-    const opt = document.createElement("option");
-    opt.value = d; opt.textContent = d;
-    dropdown.appendChild(opt);
-  });
-
   const w = ensureActiveWorkout();
   if (!w) {
     $("#active-workout").classList.add("hidden");
@@ -488,9 +505,12 @@ function renderToday() {
   $("#no-workout").classList.add("hidden");
   $("#active-workout").classList.remove("hidden");
 
+  $("#active-workout-label").textContent = w.day ? w.day : "Workout";
   $("#workout-date").value = w.date;
-  $("#workout-day").value = w.day || "";
+  $("#workout-start").value = w.startTime || "";
+  $("#workout-end").value = w.endTime || "";
   $("#workout-notes").value = w.notes || "";
+  $("#workout-duration").textContent = durationLabel(w.startTime, w.endTime);
 
   const entries = $("#entries");
   entries.innerHTML = "";
@@ -707,12 +727,19 @@ function renderHistory() {
         <div class="history-sets">${setsText || "(no sets)"}</div>
       </div>`;
     }).join("");
+    const timeBits = [];
+    if (w.startTime && w.endTime) {
+      timeBits.push(`${w.startTime}–${w.endTime}`, durationLabel(w.startTime, w.endTime));
+    } else if (w.startTime) {
+      timeBits.push(`started ${w.startTime}`);
+    }
+    const subLine = [w.day, ...timeBits, w.notes].filter(Boolean).map(escapeHtml).join(" · ");
     return `
       <div class="history-item" data-id="${w.id}">
         <div class="history-item-head">
           <div>
             <div class="history-item-date">${prettyDate(w.date)}</div>
-            <div class="history-item-day">${escapeHtml(w.day || "")} ${w.notes ? "· " + escapeHtml(w.notes) : ""}</div>
+            <div class="history-item-day">${subLine}</div>
           </div>
           <div class="history-item-actions">
             <button class="icon-btn btn-edit-workout" aria-label="Edit">✎</button>
@@ -1207,12 +1234,25 @@ function bindEvents() {
   $("#workout-date").addEventListener("change", e => {
     const w = getWorkout(activeWorkoutId); if (w) { w.date = e.target.value; saveState(); }
   });
-  $("#workout-day").addEventListener("change", e => {
-    const w = getWorkout(activeWorkoutId);
-    if (!w) return;
-    w.day = e.target.value;
+  $("#workout-start").addEventListener("change", e => {
+    const w = getWorkout(activeWorkoutId); if (!w) return;
+    w.startTime = e.target.value;
     saveState();
+    $("#workout-duration").textContent = durationLabel(w.startTime, w.endTime);
   });
+  $("#workout-end").addEventListener("change", e => {
+    const w = getWorkout(activeWorkoutId); if (!w) return;
+    w.endTime = e.target.value;
+    saveState();
+    $("#workout-duration").textContent = durationLabel(w.startTime, w.endTime);
+  });
+  $("#btn-end-now").onclick = () => {
+    const w = getWorkout(activeWorkoutId); if (!w) return;
+    w.endTime = nowHHMM();
+    saveState();
+    $("#workout-end").value = w.endTime;
+    $("#workout-duration").textContent = durationLabel(w.startTime, w.endTime);
+  };
   $("#workout-notes").addEventListener("input", e => {
     const w = getWorkout(activeWorkoutId); if (w) { w.notes = e.target.value; saveState(); }
   });

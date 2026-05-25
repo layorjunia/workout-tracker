@@ -161,6 +161,18 @@ select {
 
 /* Workout entries ===================================== */
 .workout-meta { display: flex; flex-direction: column; gap: 10px; }
+.active-label {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  letter-spacing: -0.01em;
+}
+.duration-display {
+  font-size: 17px;
+  font-weight: 600;
+  padding: 12px 0;
+  color: var(--text);
+}
 
 .entry {
   background: var(--bg-elev);

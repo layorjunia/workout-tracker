@@ -7,8 +7,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Workout Tracker</title>
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=7">
 </head>
 <body>
 
@@ -27,19 +30,29 @@
 
   <div id="active-workout" class="container hidden">
     <div class="card workout-meta">
+      <div class="active-label" id="active-workout-label">Workout</div>
       <div class="row">
         <label class="col">
           <span class="label">Date</span>
           <input type="date" id="workout-date">
         </label>
         <label class="col">
-          <span class="label">Day</span>
-          <select id="workout-day">
-            <option value="">(no template)</option>
-          </select>
+          <span class="label">Started</span>
+          <input type="time" id="workout-start">
+        </label>
+        <label class="col">
+          <span class="label">Ended</span>
+          <input type="time" id="workout-end">
         </label>
       </div>
-      <label>
+      <div class="row" style="margin-top: 8px; align-items: center;">
+        <div class="col">
+          <span class="label">Duration</span>
+          <div id="workout-duration" class="duration-display">—</div>
+        </div>
+        <button class="btn btn-secondary" id="btn-end-now" style="flex:0 0 auto; align-self: flex-end;">End now</button>
+      </div>
+      <label style="margin-top:10px">
         <span class="label">Notes</span>
         <input type="text" id="workout-notes" placeholder="energy, sleep, anything to remember">
       </label>
@@ -387,6 +400,6 @@
 </nav>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="app.js"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>
