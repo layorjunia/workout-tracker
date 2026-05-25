@@ -42,6 +42,52 @@ const SEED = {
   ],
 };
 
+// Workout templates: when the user taps "New", they pick one of these and the
+// session starts with these exercises pre-added. "Blank" creates an empty session.
+const TEMPLATES = {
+  "Push": {
+    subtitle: "Chest · Shoulders · Triceps",
+    exercises: [
+      "Seated Chest Press Machine",
+      "Pectoral Fly",
+      "Seated Shoulder Press",
+      "Dumbbell Side Lateral Raise",
+      "Tricep Cable Pushdown",
+    ],
+  },
+  "Pull": {
+    subtitle: "Back · Biceps",
+    exercises: [
+      "Row Machine",
+      "Lat Pulldown",
+      "Wide Grip Pull-up (Assisted)",
+      "Preacher Curl",
+      "Cable Face Pull",
+    ],
+  },
+  "Legs": {
+    subtitle: "Quads · Hamstrings · Glutes · Calves",
+    exercises: [
+      "Squats",
+      "Seated Leg Extension",
+      "Leg Curl Machine",
+      "Hip Abduction",
+      "Hip Adduction",
+      "Calf Raises",
+    ],
+  },
+  "Mix": {
+    subtitle: "Full body · upper + lower",
+    exercises: [
+      "Chest Press Machine",
+      "Lat Pulldown",
+      "Squats",
+      "Tricep Dips (Assisted)",
+      "Ab Twist Machine",
+    ],
+  },
+};
+
 // Historical sessions imported from the original Google Sheets workout plan.
 // Auto-loaded on first launch (or when workouts is empty and history hasn't been seeded yet).
 const HISTORY = [
@@ -315,30 +361,50 @@ function ensureActiveWorkout() {
 }
 function getWorkout(id) { return state.workouts.find(w => w.id === id); }
 
-function startNewWorkout() {
-  // Suggest "Day N" — rotate based on last workout's day if available
-  const last = state.workouts.slice().sort((a,b) => b.date.localeCompare(a.date))[0];
-  const dayKeys = Object.keys(state.days).filter(k => state.days[k].length > 0);
-  let suggested = "";
-  if (last && last.day) {
-    const i = dayKeys.indexOf(last.day);
-    if (i >= 0) suggested = dayKeys[(i + 1) % dayKeys.length];
-  } else if (dayKeys.length) {
-    suggested = dayKeys[0];
-  }
+function openTemplateChooser() {
+  const grid = $("#template-grid");
+  const tiles = [];
+  Object.entries(TEMPLATES).forEach(([name, t]) => {
+    const preview = t.exercises.slice(0, 3).join(" · ") + (t.exercises.length > 3 ? `  +${t.exercises.length - 3}` : "");
+    tiles.push(`
+      <button class="template-tile" data-template="${escapeHtml(name)}">
+        <div class="tile-name">${escapeHtml(name)} <span class="tile-count">${t.exercises.length}</span></div>
+        <div class="tile-sub">${escapeHtml(t.subtitle)}</div>
+        <div class="tile-list">${escapeHtml(preview)}</div>
+      </button>`);
+  });
+  tiles.push(`
+    <button class="template-tile blank" data-template="">
+      <div class="tile-name">Blank</div>
+      <div class="tile-sub">Start with no exercises</div>
+      <div class="tile-list">Add what you want as you go</div>
+    </button>`);
+  grid.innerHTML = tiles.join("");
+  grid.querySelectorAll(".template-tile").forEach(el => {
+    el.onclick = () => {
+      closeTemplateChooser();
+      startNewWorkout(el.dataset.template);
+    };
+  });
+  $("#template-modal").classList.remove("hidden");
+}
+function closeTemplateChooser() {
+  $("#template-modal").classList.add("hidden");
+}
+
+function startNewWorkout(templateName = "") {
   const w = {
     id: uid(),
     date: todayISO(),
-    day: suggested,
+    day: templateName,
     notes: "",
     entries: [],
     createdAt: Date.now(),
   };
   state.workouts.push(w);
   activeWorkoutId = w.id;
-  // Pre-populate exercises from template
-  if (suggested && state.days[suggested]) {
-    state.days[suggested].forEach(name => {
+  if (templateName && TEMPLATES[templateName]) {
+    TEMPLATES[templateName].exercises.forEach(name => {
       const ex = findOrCreateExercise(name);
       addEntry(ex.id);
     });
@@ -401,8 +467,13 @@ function renderToday() {
     {weekday:"long", month:"long", day:"numeric"});
 
   const dropdown = $("#workout-day");
-  dropdown.innerHTML = '<option value="">(no template)</option>';
-  Object.keys(state.days).forEach(d => {
+  dropdown.innerHTML = '<option value="">(no label)</option>';
+  // Build union of template names + day-labels that already exist on workouts
+  const labels = new Set([
+    ...Object.keys(TEMPLATES),
+    ...state.workouts.map(w => w.day).filter(Boolean),
+  ]);
+  Array.from(labels).sort().forEach(d => {
     const opt = document.createElement("option");
     opt.value = d; opt.textContent = d;
     dropdown.appendChild(opt);
@@ -1119,8 +1190,9 @@ function importJSON(file) {
 function bindEvents() {
   $$(".nav-btn").forEach(b => b.onclick = () => showView(b.dataset.view));
 
-  $("#btn-new-workout").onclick = startNewWorkout;
-  $("#btn-new-workout-empty").onclick = startNewWorkout;
+  $("#btn-new-workout").onclick = openTemplateChooser;
+  $("#btn-new-workout-empty").onclick = openTemplateChooser;
+  $("#btn-template-close").onclick = closeTemplateChooser;
   $("#btn-save-workout").onclick = finishWorkout;
   $("#btn-discard-workout").onclick = discardWorkout;
   $("#btn-add-exercise").onclick = () => {
@@ -1139,14 +1211,7 @@ function bindEvents() {
     const w = getWorkout(activeWorkoutId);
     if (!w) return;
     w.day = e.target.value;
-    if (e.target.value && state.days[e.target.value] && w.entries.length === 0) {
-      // Pre-populate if entries are empty
-      state.days[e.target.value].forEach(name => {
-        const ex = findOrCreateExercise(name);
-        addEntry(ex.id);
-      });
-    }
-    saveState(); renderToday();
+    saveState();
   });
   $("#workout-notes").addEventListener("input", e => {
     const w = getWorkout(activeWorkoutId); if (w) { w.notes = e.target.value; saveState(); }
