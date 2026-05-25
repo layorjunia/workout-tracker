@@ -387,21 +387,21 @@ select {
   position: fixed; inset: 0; z-index: 100;
   background: rgba(0,0,0,0.55);
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;          /* anchor to top so keyboard never covers the search */
   justify-content: center;
   animation: fadeIn 0.18s ease;
 }
 .modal-card {
   background: var(--bg);
-  border-radius: 16px 16px 0 0;
+  border-radius: 0 0 16px 16px;     /* rounded at bottom since it slides down from top */
   width: 100%;
   max-width: 600px;
-  max-height: 88vh;
+  max-height: 100dvh;               /* dynamic viewport — shrinks when keyboard appears */
   display: flex;
   flex-direction: column;
   padding: var(--pad);
-  padding-bottom: calc(var(--pad) + env(safe-area-inset-bottom));
-  animation: slideUp 0.22s ease;
+  padding-top: calc(var(--pad) + env(safe-area-inset-top));
+  animation: slideDown 0.22s ease;
   overflow: hidden;
 }
 .modal-head {
@@ -411,6 +411,16 @@ select {
   padding-bottom: 10px;
   margin-bottom: 10px;
   border-bottom: 1px solid var(--border);
+  position: sticky;                  /* keep header pinned even if content scrolls */
+  top: 0;
+  background: var(--bg);
+  z-index: 1;
+}
+#picker-search, #picker-modal .search {
+  position: sticky;                  /* search input never scrolls out of view */
+  top: 56px;                         /* below the sticky modal-head */
+  background: var(--bg);
+  z-index: 1;
 }
 .picker-list { overflow-y: auto; flex: 1; margin: 10px -4px; }
 .picker-item {
@@ -426,6 +436,7 @@ select {
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideUp { from { transform: translateY(40px); } to { transform: translateY(0); } }
+@keyframes slideDown { from { transform: translateY(-40px); } to { transform: translateY(0); } }
 
 /* Toast =============================================== */
 .toast {
