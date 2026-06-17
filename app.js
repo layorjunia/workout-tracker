@@ -1514,14 +1514,54 @@ function bindEvents() {
   }
 }
 
+// Register service worker for offline + PWA install (which protects iOS data
+// from the 7-day Safari purge once added to home screen)
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.register("./service-worker.js").catch(err => {
+    console.warn("SW registration failed:", err);
+  });
+}
+
+// Ask the browser to keep our data even under storage pressure
+function requestPersistentStorage() {
+  if (!navigator.storage || !navigator.storage.persist) return;
+  navigator.storage.persist().then(granted => {
+    console.log("Persistent storage granted:", granted);
+  });
+}
+
+// Banner reminding iOS Safari users to Add to Home Screen (one-time, dismissible)
+function maybeShowInstallBanner() {
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isStandalone = window.navigator.standalone === true ||
+    window.matchMedia("(display-mode: standalone)").matches;
+  if (!isIOS || isStandalone) return;
+  if (localStorage.getItem("install-banner-dismissed")) return;
+  const banner = document.getElementById("install-banner");
+  if (banner) banner.classList.remove("hidden");
+}
+
 function init() {
   applyTheme();
   bindEvents();
+  registerServiceWorker();
+  requestPersistentStorage();
+  maybeShowInstallBanner();
 
   // Reset inactivity timer on any user interaction
   ["input", "click", "touchstart"].forEach(ev => {
     document.addEventListener(ev, resetInactivityTimer, { passive: true });
   });
+
+  // Dismiss install banner
+  const dismissInstall = document.getElementById("btn-dismiss-install");
+  if (dismissInstall) {
+    dismissInstall.onclick = () => {
+      localStorage.setItem("install-banner-dismissed", "1");
+      document.getElementById("install-banner").classList.add("hidden");
+    };
+  }
 
   // Safety-net saves so iOS Safari can't drop unsaved state when backgrounded
   document.addEventListener("visibilitychange", () => {

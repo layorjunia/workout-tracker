@@ -10,13 +10,26 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <title>Workout Tracker</title>
-<link rel="stylesheet" href="styles.css?v=8">
+<link rel="stylesheet" href="styles.css?v=9">
 </head>
 <body>
 
 <!-- Toast -->
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<!-- iOS install banner: only shown to Safari users who haven't added to home screen -->
+<div id="install-banner" class="install-banner hidden">
+  <div class="install-banner-text">
+    <strong>Protect your workout data</strong>
+    <span>Tap Share <span class="ios-share-icon">⬆</span> below → <strong>Add to Home Screen</strong>. iOS will then keep your data permanently (no 7-day purge).</span>
+  </div>
+  <button class="btn btn-ghost" id="btn-dismiss-install">Got it</button>
+</div>
 
 <!-- TODAY view ===================================================== -->
 <section id="view-today" class="view active">
@@ -420,6 +433,6 @@
 </nav>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="app.js?v=8"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>

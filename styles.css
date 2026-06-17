@@ -565,6 +565,37 @@ select {
 
 .hidden { display: none !important; }
 
+/* iOS install prompt ================================== */
+.install-banner {
+  position: fixed;
+  bottom: calc(80px + env(safe-area-inset-bottom));
+  left: 12px;
+  right: 12px;
+  z-index: 200;
+  background: var(--bg-elev);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.4;
+  max-width: 600px;
+  margin: 0 auto;
+}
+.install-banner-text { flex: 1; }
+.install-banner-text strong { display: block; margin-bottom: 2px; font-size: 14px; }
+.install-banner-text span { color: var(--text-dim); }
+.ios-share-icon {
+  display: inline-block;
+  background: var(--bg-elev-2);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 12px;
+}
+
 /* Larger screens ====================================== */
 @media (min-width: 720px) {
   body { padding-bottom: 0; }
