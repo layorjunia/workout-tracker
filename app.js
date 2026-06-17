@@ -42,10 +42,12 @@ const SEED = {
   ],
 };
 
-// Workout templates: when the user taps "New", they pick one of these and the
-// session starts with these exercises pre-added. "Blank" creates an empty session.
-const TEMPLATES = {
-  "Push": {
+// Default workout templates — copied into state.templates on first launch.
+// User edits live on state.templates; this constant is only the seed.
+const DEFAULT_TEMPLATES = [
+  {
+    id: "tpl-push",
+    name: "Push",
     subtitle: "Chest · Shoulders · Triceps",
     exercises: [
       "Seated Chest Press Machine",
@@ -55,7 +57,9 @@ const TEMPLATES = {
       "Tricep Cable Pushdown",
     ],
   },
-  "Pull": {
+  {
+    id: "tpl-pull",
+    name: "Pull",
     subtitle: "Back · Biceps",
     exercises: [
       "Row Machine",
@@ -65,7 +69,9 @@ const TEMPLATES = {
       "Cable Face Pull",
     ],
   },
-  "Legs": {
+  {
+    id: "tpl-legs",
+    name: "Legs",
     subtitle: "Quads · Hamstrings · Glutes · Calves",
     exercises: [
       "Squats",
@@ -76,7 +82,9 @@ const TEMPLATES = {
       "Calf Raises",
     ],
   },
-  "Mix": {
+  {
+    id: "tpl-mix",
+    name: "Mix",
     subtitle: "Full body · upper + lower",
     exercises: [
       "Chest Press Machine",
@@ -86,7 +94,7 @@ const TEMPLATES = {
       "Ab Twist Machine",
     ],
   },
-};
+];
 
 // Historical sessions imported from the original Google Sheets workout plan.
 // Auto-loaded on first launch (or when workouts is empty and history hasn't been seeded yet).
@@ -242,9 +250,29 @@ function loadState() {
   }
   return defaultState();
 }
+let lastSavedAt = null;
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    lastSavedAt = Date.now();
+    updateSavedIndicator();
+  } catch (e) {
+    console.error("saveState failed", e);
+    const ind = document.getElementById("saved-indicator");
+    if (ind) { ind.textContent = "⚠ Save failed"; ind.className = "saved-indicator failed"; }
+  }
 }
+function updateSavedIndicator() {
+  const ind = document.getElementById("saved-indicator");
+  if (!ind || !lastSavedAt) return;
+  const sec = Math.floor((Date.now() - lastSavedAt) / 1000);
+  ind.className = "saved-indicator";
+  if (sec < 5) ind.textContent = "✓ Saved";
+  else if (sec < 60) ind.textContent = `✓ Saved ${sec}s ago`;
+  else if (sec < 3600) ind.textContent = `✓ Saved ${Math.floor(sec/60)}m ago`;
+  else ind.textContent = `✓ Saved ${Math.floor(sec/3600)}h ago`;
+}
+setInterval(updateSavedIndicator, 5000);
 function defaultProfile() {
   return { height: 70, weight: 175, age: 28, sex: "male", activity: "moderate" };
 }
@@ -253,6 +281,7 @@ function defaultState() {
     schemaVersion: 1,
     exercises: SEED.exercises.map(e => ({ id: uid(), ...e })),
     days: JSON.parse(JSON.stringify(SEED.days)),
+    templates: JSON.parse(JSON.stringify(DEFAULT_TEMPLATES)),
     workouts: [],
     settings: { units: "lbs", theme: "dark", gistId: "" },
     profile: defaultProfile(),
@@ -276,6 +305,17 @@ function migrate(s) {
   s.nutrition ??= [];
   s.health ??= { lastFetch: null, data: null, lastError: null };
   s.seedHistoryLoaded ??= false;
+  // Seed templates if missing (first run after this feature shipped)
+  if (!s.templates) s.templates = JSON.parse(JSON.stringify(DEFAULT_TEMPLATES));
+  // Migrate old object-keyed templates → array shape
+  if (s.templates && !Array.isArray(s.templates)) {
+    s.templates = Object.entries(s.templates).map(([name, t]) => ({
+      id: uid(),
+      name,
+      subtitle: t.subtitle || "",
+      exercises: t.exercises || [],
+    }));
+  }
 
   // Sync any new seed exercises into existing state (idempotent, name-matched)
   SEED.exercises.forEach(seedEx => {
@@ -364,6 +404,7 @@ function showView(name) {
   if (name === "history") renderHistory();
   if (name === "progress") renderProgress();
   if (name === "library") renderLibrary();
+  if (name === "templates") renderTemplates();
   if (name === "health") renderHealth();
   if (name === "settings") renderSettings();
 }
@@ -390,12 +431,12 @@ function getWorkout(id) { return state.workouts.find(w => w.id === id); }
 function openTemplateChooser() {
   const grid = $("#template-grid");
   const tiles = [];
-  Object.entries(TEMPLATES).forEach(([name, t]) => {
+  state.templates.forEach(t => {
     const preview = t.exercises.slice(0, 3).join(" · ") + (t.exercises.length > 3 ? `  +${t.exercises.length - 3}` : "");
     tiles.push(`
-      <button class="template-tile" data-template="${escapeHtml(name)}">
-        <div class="tile-name">${escapeHtml(name)} <span class="tile-count">${t.exercises.length}</span></div>
-        <div class="tile-sub">${escapeHtml(t.subtitle)}</div>
+      <button class="template-tile" data-template="${escapeHtml(t.id)}">
+        <div class="tile-name">${escapeHtml(t.name)} <span class="tile-count">${t.exercises.length}</span></div>
+        <div class="tile-sub">${escapeHtml(t.subtitle || "")}</div>
         <div class="tile-list">${escapeHtml(preview)}</div>
       </button>`);
   });
@@ -418,11 +459,12 @@ function closeTemplateChooser() {
   $("#template-modal").classList.add("hidden");
 }
 
-function startNewWorkout(templateName = "") {
+function startNewWorkout(templateId = "") {
+  const tpl = templateId ? state.templates.find(t => t.id === templateId) : null;
   const w = {
     id: uid(),
     date: todayISO(),
-    day: templateName,
+    day: tpl ? tpl.name : "",
     startTime: nowHHMM(),
     endTime: "",
     notes: "",
@@ -431,13 +473,14 @@ function startNewWorkout(templateName = "") {
   };
   state.workouts.push(w);
   activeWorkoutId = w.id;
-  if (templateName && TEMPLATES[templateName]) {
-    TEMPLATES[templateName].exercises.forEach(name => {
+  if (tpl) {
+    tpl.exercises.forEach(name => {
       const ex = findOrCreateExercise(name);
       addEntry(ex.id);
     });
   }
   saveState();
+  resetInactivityTimer();
   renderToday();
 }
 
@@ -469,6 +512,40 @@ function discardWorkout() {
   saveState();
   renderToday();
   toast("Workout discarded");
+}
+
+// Finalize current workout silently — used by end-time auto-save and the inactivity timer.
+function autoFinalize(toastMsg = "Workout saved") {
+  const w = getWorkout(activeWorkoutId);
+  if (!w) return;
+  // Strip empty trailing sets, keep at least one per entry
+  w.entries.forEach(e => {
+    e.sets = e.sets.filter((s, i) => i === 0 || s.load !== "" || s.reps !== "");
+  });
+  saveState();
+  activeWorkoutId = null;
+  clearInactivityTimer();
+  renderToday();
+  toast(toastMsg);
+}
+
+// Inactivity auto-save: if a workout is open and nothing happens for 1 hour, finalize it.
+let inactivityTimer = null;
+const INACTIVITY_MS = 60 * 60 * 1000;
+function resetInactivityTimer() {
+  clearInactivityTimer();
+  if (!activeWorkoutId) return;
+  inactivityTimer = setTimeout(() => {
+    const w = getWorkout(activeWorkoutId);
+    if (!w) return;
+    const hasData = w.entries.some(e => e.sets.some(s => s.load !== "" || s.reps !== ""));
+    if (!hasData) return; // don't auto-save an empty workout
+    if (!w.endTime) w.endTime = nowHHMM();
+    autoFinalize("Auto-saved after 1 hour idle");
+  }, INACTIVITY_MS);
+}
+function clearInactivityTimer() {
+  if (inactivityTimer) { clearTimeout(inactivityTimer); inactivityTimer = null; }
 }
 
 function finishWorkout() {
@@ -763,6 +840,7 @@ function renderHistory() {
     el.querySelector(".btn-edit-workout").onclick = (e) => {
       e.stopPropagation();
       activeWorkoutId = el.dataset.id;
+      resetInactivityTimer();
       showView("today");
     };
     el.querySelector(".btn-del-workout").onclick = (e) => {
@@ -1023,6 +1101,93 @@ function openExerciseEditor(id) {
   setTimeout(() => nameInp.focus(), 100);
 }
 
+/* ───────── Templates view ───────── */
+function renderTemplates() {
+  const list = $("#templates-list");
+  if (state.templates.length === 0) {
+    list.innerHTML = `<div class="card muted" style="text-align:center;padding:30px">No templates yet. Tap + New to create one.</div>`;
+    return;
+  }
+  list.innerHTML = state.templates.map(t => `
+    <div class="card template-edit-card" data-id="${escapeHtml(t.id)}">
+      <input class="template-name-input" type="text" value="${escapeHtml(t.name)}" placeholder="Template name" autocapitalize="words">
+      <input class="template-subtitle-input" type="text" value="${escapeHtml(t.subtitle || "")}" placeholder="Subtitle (e.g. Chest · Shoulders)">
+      <div class="template-exercise-list">
+        ${t.exercises.length === 0
+          ? `<div class="muted small" style="padding:8px 4px">No exercises yet.</div>`
+          : t.exercises.map((ex, i) => `
+            <div class="template-exercise-row" data-index="${i}">
+              <button class="btn-reorder up" data-dir="up" data-index="${i}" aria-label="Move up">▲</button>
+              <button class="btn-reorder down" data-dir="down" data-index="${i}" aria-label="Move down">▼</button>
+              <span class="ex-text">${escapeHtml(ex)}</span>
+              <button class="icon-btn danger btn-remove-tpl-ex" data-index="${i}" aria-label="Remove">×</button>
+            </div>
+          `).join("")}
+      </div>
+      <div class="row actions">
+        <button class="btn btn-secondary btn-add-tpl-ex">+ Add exercise</button>
+        <button class="btn btn-ghost danger btn-delete-tpl">Delete</button>
+      </div>
+    </div>
+  `).join("");
+
+  list.querySelectorAll(".template-edit-card").forEach(card => {
+    const id = card.dataset.id;
+    const t = state.templates.find(x => x.id === id);
+    if (!t) return;
+
+    card.querySelector(".template-name-input").addEventListener("input", e => {
+      t.name = e.target.value;
+      saveState();
+    });
+    card.querySelector(".template-subtitle-input").addEventListener("input", e => {
+      t.subtitle = e.target.value;
+      saveState();
+    });
+    card.querySelectorAll(".btn-remove-tpl-ex").forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const i = +btn.dataset.index;
+        t.exercises.splice(i, 1);
+        saveState();
+        renderTemplates();
+      };
+    });
+    card.querySelectorAll(".btn-reorder").forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const i = +btn.dataset.index;
+        const dir = btn.dataset.dir;
+        const j = dir === "up" ? i - 1 : i + 1;
+        if (j < 0 || j >= t.exercises.length) return;
+        [t.exercises[i], t.exercises[j]] = [t.exercises[j], t.exercises[i]];
+        saveState();
+        renderTemplates();
+      };
+    });
+    card.querySelector(".btn-add-tpl-ex").onclick = () => {
+      openPicker(exId => {
+        const ex = state.exercises.find(e => e.id === exId);
+        if (!ex) return;
+        if (t.exercises.includes(ex.name)) {
+          toast("Already in template");
+          return;
+        }
+        t.exercises.push(ex.name);
+        saveState();
+        renderTemplates();
+      });
+    };
+    card.querySelector(".btn-delete-tpl").onclick = () => {
+      if (!confirm(`Delete the "${t.name}" template?`)) return;
+      state.templates = state.templates.filter(x => x.id !== id);
+      saveState();
+      renderTemplates();
+      toast("Template deleted");
+    };
+  });
+}
+
 /* ───────── Health view ───────── */
 let healthCurrentDate = null;
 
@@ -1245,6 +1410,7 @@ function bindEvents() {
     w.endTime = e.target.value;
     saveState();
     $("#workout-duration").textContent = durationLabel(w.startTime, w.endTime);
+    if (w.endTime) autoFinalize("Workout saved · end time set");
   });
   $("#btn-end-now").onclick = () => {
     const w = getWorkout(activeWorkoutId); if (!w) return;
@@ -1252,6 +1418,7 @@ function bindEvents() {
     saveState();
     $("#workout-end").value = w.endTime;
     $("#workout-duration").textContent = durationLabel(w.startTime, w.endTime);
+    autoFinalize("Workout saved · ended now");
   };
   $("#workout-notes").addEventListener("input", e => {
     const w = getWorkout(activeWorkoutId); if (w) { w.notes = e.target.value; saveState(); }
@@ -1264,6 +1431,14 @@ function bindEvents() {
   $("#setting-units").onchange = e => { state.settings.units = e.target.value; saveState(); renderToday(); };
   $("#setting-theme").onchange = e => { state.settings.theme = e.target.value; saveState(); applyTheme(); };
   $("#btn-open-library").onclick = () => showView("library");
+  $("#btn-open-templates").onclick = () => showView("templates");
+  $("#btn-templates-add").onclick = () => {
+    const name = (prompt("Template name (e.g. Upper, Lower, Core)") || "").trim();
+    if (!name) return;
+    state.templates.push({ id: uid(), name, subtitle: "", exercises: [] });
+    saveState();
+    renderTemplates();
+  };
   $("#setting-gist-id").addEventListener("input", e => {
     state.settings.gistId = e.target.value.trim();
     saveState();
@@ -1342,6 +1517,19 @@ function bindEvents() {
 function init() {
   applyTheme();
   bindEvents();
+
+  // Reset inactivity timer on any user interaction
+  ["input", "click", "touchstart"].forEach(ev => {
+    document.addEventListener(ev, resetInactivityTimer, { passive: true });
+  });
+
+  // Safety-net saves so iOS Safari can't drop unsaved state when backgrounded
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) saveState();
+  });
+  window.addEventListener("pagehide", saveState);
+  window.addEventListener("beforeunload", saveState);
+
   // Accept ?gist=<id> in the URL to auto-configure on first tap
   const urlGist = new URL(location.href).searchParams.get("gist");
   if (urlGist && urlGist !== state.settings.gistId) {

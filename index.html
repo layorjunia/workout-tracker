@@ -11,7 +11,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Workout Tracker</title>
-<link rel="stylesheet" href="styles.css?v=7">
+<link rel="stylesheet" href="styles.css?v=8">
 </head>
 <body>
 
@@ -30,7 +30,10 @@
 
   <div id="active-workout" class="container hidden">
     <div class="card workout-meta">
-      <div class="active-label" id="active-workout-label">Workout</div>
+      <div class="active-header">
+        <div class="active-label" id="active-workout-label">Workout</div>
+        <div class="saved-indicator" id="saved-indicator">Not saved yet</div>
+      </div>
       <div class="row">
         <label class="col">
           <span class="label">Date</span>
@@ -253,6 +256,18 @@
   </div>
 </section>
 
+<!-- TEMPLATES view ================================================= -->
+<section id="view-templates" class="view">
+  <header class="topbar">
+    <div class="topbar-title">Templates</div>
+    <button class="btn btn-ghost" id="btn-templates-add">+ New</button>
+  </header>
+  <div class="container">
+    <p class="muted small">These show up when you tap <strong>New</strong> on Today. Edit names, add or remove exercises, or build new templates for your splits.</p>
+    <div id="templates-list"></div>
+  </div>
+</section>
+
 <!-- LIBRARY view =================================================== -->
 <section id="view-library" class="view">
   <header class="topbar">
@@ -290,6 +305,11 @@
         </select>
       </label>
     </div>
+    <div class="card">
+      <h3>Workout templates</h3>
+      <button class="btn btn-secondary" id="btn-open-templates" style="width:100%">Edit templates</button>
+    </div>
+
     <div class="card">
       <h3>Exercise library</h3>
       <button class="btn btn-secondary" id="btn-open-library" style="width:100%">Manage exercises</button>
@@ -400,6 +420,6 @@
 </nav>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>

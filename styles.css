@@ -164,9 +164,23 @@ select {
 .active-label {
   font-size: 22px;
   font-weight: 700;
-  margin-bottom: 6px;
   letter-spacing: -0.01em;
 }
+.active-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.saved-indicator {
+  font-size: 11px;
+  color: var(--success);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.saved-indicator.failed { color: var(--danger); }
 .duration-display {
   font-size: 17px;
   font-weight: 600;
@@ -461,6 +475,50 @@ select {
 .template-tile:hover { border-color: var(--accent); }
 .template-tile:active { transform: scale(0.98); background: var(--bg-elev-2); }
 .template-tile.blank { background: transparent; border-style: dashed; }
+
+/* Templates editor view */
+.template-edit-card { padding: 14px; }
+.template-name-input {
+  font-size: 18px;
+  font-weight: 700;
+  background: transparent;
+  border: none;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+.template-name-input:focus { outline: none; border-bottom-color: var(--accent); }
+.template-subtitle-input {
+  font-size: 13px;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  padding: 4px 0;
+  margin-bottom: 10px;
+}
+.template-subtitle-input:focus { outline: none; color: var(--text); }
+.template-exercise-list { margin: 8px 0; }
+.template-exercise-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px;
+  border-bottom: 1px dashed var(--border);
+}
+.template-exercise-row:last-child { border-bottom: none; }
+.template-exercise-row .ex-text { flex: 1; font-size: 14px; }
+.btn-reorder {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-dim);
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 10px;
+  cursor: pointer;
+}
+.btn-reorder:hover { color: var(--text); border-color: var(--accent); }
 .tile-name { font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
 .tile-count {
   font-size: 11px; font-weight: 600;
