@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <title>Workout Tracker</title>
-<link rel="stylesheet" href="styles.css?v=12">
+<link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body>
 
@@ -331,8 +331,17 @@
     <div class="card">
       <h3>Cloud sync</h3>
       <div id="sync-signed-out">
-        <p class="muted small">Sign in with Google to sync your workouts across iPhone and laptop. Data is stored in a private Firebase document only you can read.</p>
-        <button class="btn btn-primary" id="btn-sync-signin" style="width:100%">Sign in with Google</button>
+        <p class="muted small">Sign in with a name (or email) and a 6+ digit PIN. Same name + PIN on your phone and laptop = same synced data. First time you use a name, an account is created automatically.</p>
+        <label>
+          <span class="label">Name or email</span>
+          <input type="text" id="sync-identifier" placeholder="e.g. jacob" autocapitalize="none" autocomplete="username" autocorrect="off" spellcheck="false">
+        </label>
+        <label>
+          <span class="label">PIN (6+ digits)</span>
+          <input type="password" id="sync-pin" inputmode="numeric" placeholder="••••••" autocomplete="current-password">
+        </label>
+        <div id="sync-signin-error" class="muted small" style="color: var(--danger); min-height: 16px;"></div>
+        <button class="btn btn-primary" id="btn-sync-signin" style="width:100%; margin-top:8px">Sign in / Create account</button>
       </div>
       <div id="sync-signed-in" class="hidden">
         <div class="row" style="align-items: center; gap: 12px;">
@@ -472,7 +481,7 @@
 </nav>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="app.js?v=12"></script>
-<script type="module" src="firebase-sync.js?v=12"></script>
+<script src="app.js?v=13"></script>
+<script type="module" src="firebase-sync.js?v=13"></script>
 </body>
 </html>

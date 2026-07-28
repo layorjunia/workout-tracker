@@ -15,7 +15,9 @@
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.0/firebase-app.js";
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
+  getAuth, signOut, onAuthStateChanged,
+  signInWithEmailAndPassword, createUserWithEmailAndPassword,
+  GoogleAuthProvider, signInWithPopup,
 } from "https://www.gstatic.com/firebasejs/10.14.0/firebase-auth.js";
 import {
   getFirestore, doc, setDoc, getDoc, onSnapshot, serverTimestamp,
@@ -132,6 +134,46 @@ onAuthStateChanged(auth, async (user) => {
   }
 });
 
+// Normalize any user-entered identifier into an email Firebase Auth can accept.
+// Rules:
+//   • already contains "@" → use as-is
+//   • otherwise → strip non-alphanum, lowercase, append @workout-tracker.local
+function toAuthEmail(identifier) {
+  const s = String(identifier || "").trim();
+  if (s.includes("@")) return s.toLowerCase();
+  const clean = s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (!clean) throw new Error("Enter a name or email");
+  return `${clean}@workout-tracker.local`;
+}
+
+// Sign in with identifier (name or email) + PIN (Firebase requires ≥6 chars).
+// If the account doesn't exist, create it and return { created: true }.
+async function signInWithPIN(identifier, pin) {
+  const email = toAuthEmail(identifier);
+  const password = String(pin || "");
+  if (password.length < 6) throw new Error("PIN must be at least 6 digits/characters");
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+    return { created: false, email };
+  } catch (e) {
+    if (e.code === "auth/user-not-found" || e.code === "auth/invalid-credential") {
+      // Might be a wrong password OR truly a new user. Try to create.
+      try {
+        await createUserWithEmailAndPassword(auth, email, password);
+        return { created: true, email };
+      } catch (e2) {
+        if (e2.code === "auth/email-already-in-use") {
+          throw new Error("Wrong PIN for that name");
+        }
+        throw e2;
+      }
+    }
+    if (e.code === "auth/wrong-password") throw new Error("Wrong PIN");
+    if (e.code === "auth/weak-password") throw new Error("PIN too weak (6+ chars)");
+    throw e;
+  }
+}
+
 async function signInGoogle() {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
@@ -145,6 +187,7 @@ async function signOutOfApp() {
 
 // Public API
 window.WorkoutSync = {
+  signInWithPIN,
   signInGoogle,
   signOut: signOutOfApp,
   scheduleCloudPush,

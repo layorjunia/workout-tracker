@@ -1704,10 +1704,28 @@ function bindEvents() {
   $("#setting-theme").onchange = e => { state.settings.theme = e.target.value; saveState(); applyTheme(); };
   $("#btn-open-library").onclick = () => showView("library");
   $("#btn-open-templates").onclick = () => showView("templates");
-  $("#btn-sync-signin").onclick = () => {
-    window.WorkoutSync?.signInGoogle?.().catch(e => {
-      alert("Sign-in failed: " + (e.message || e));
-    });
+  $("#btn-sync-signin").onclick = async () => {
+    const idInput = $("#sync-identifier");
+    const pinInput = $("#sync-pin");
+    const errEl = $("#sync-signin-error");
+    errEl.textContent = "";
+    const identifier = idInput.value.trim();
+    const pin = pinInput.value;
+    if (!identifier) { errEl.textContent = "Enter a name or email"; return; }
+    if (!pin || pin.length < 6) { errEl.textContent = "PIN needs 6+ digits"; return; }
+    const btn = $("#btn-sync-signin");
+    btn.disabled = true;
+    btn.textContent = "Signing in…";
+    try {
+      const res = await window.WorkoutSync.signInWithPIN(identifier, pin);
+      pinInput.value = "";
+      if (res.created) toast(`New account created for "${identifier}"`);
+    } catch (e) {
+      errEl.textContent = e.message || String(e);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Sign in / Create account";
+    }
   };
   $("#btn-sync-signout").onclick = () => {
     if (!confirm("Sign out? Your local data stays; cloud sync stops.")) return;
