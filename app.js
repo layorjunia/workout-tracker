@@ -39,6 +39,15 @@ const SEED = {
     {name:"Tricep Cable Pushdown Rope", defaultSets:3, defaultRepRange:"10–12", days:["Day 1"]},
     {name:"Tricep Dips (Assisted)", defaultSets:3, defaultRepRange:"8–10", days:["Day 1","Day 4"]},
     {name:"Wide Grip Pull-up (Assisted)", defaultSets:3, defaultRepRange:"10–15", days:["Day 2","Day 4"]},
+    // Cardio (added v2)
+    {name:"Running (Treadmill)",   type:"cardio", defaultSets:1, defaultRepRange:"", days:[]},
+    {name:"Running (Outdoor)",     type:"cardio", defaultSets:1, defaultRepRange:"", days:[]},
+    {name:"Stationary Bike",       type:"cardio", defaultSets:1, defaultRepRange:"", days:[]},
+    {name:"Elliptical",            type:"cardio", defaultSets:1, defaultRepRange:"", days:[]},
+    {name:"Rowing Machine (Erg)",  type:"cardio", defaultSets:1, defaultRepRange:"", days:[]},
+    {name:"StairMaster",           type:"cardio", defaultSets:1, defaultRepRange:"", days:[]},
+    {name:"Incline Walk",          type:"cardio", defaultSets:1, defaultRepRange:"", days:[]},
+    {name:"HIIT",                  type:"cardio", defaultSets:1, defaultRepRange:"", days:[]},
   ],
 };
 
@@ -94,6 +103,15 @@ const DEFAULT_TEMPLATES = [
       "Squats Leg Press",
       "Preacher Curl",
       "Ab Twist Machine",
+    ],
+  },
+  {
+    id: "tpl-cardio",
+    name: "Cardio",
+    subtitle: "HR · sweat · zone 2",
+    exercises: [
+      "Incline Walk",
+      "Stationary Bike",
     ],
   },
 ];
@@ -347,10 +365,20 @@ function migrate(s) {
     s.templatesV2Applied = true;
   }
 
+  // Add any default templates that don't already exist by id (e.g. Cardio added later)
+  DEFAULT_TEMPLATES.forEach(def => {
+    if (!s.templates.find(t => t.id === def.id)) {
+      s.templates.push(JSON.parse(JSON.stringify(def)));
+    }
+  });
+
+  // Default type on any legacy exercise entry
+  s.exercises.forEach(e => { if (!e.type) e.type = "strength"; });
+
   // Sync any new seed exercises into existing state (idempotent, name-matched)
   SEED.exercises.forEach(seedEx => {
     if (!s.exercises.find(e => e.name.toLowerCase() === seedEx.name.toLowerCase())) {
-      s.exercises.push({ id: uid(), ...seedEx });
+      s.exercises.push({ id: uid(), type: "strength", ...seedEx });
     }
   });
   // Sync new seed day entries (e.g. Calf Raises added to Day 5)
@@ -527,9 +555,13 @@ function addEntry(exerciseId) {
   const w = getWorkout(activeWorkoutId);
   if (!w) return;
   const ex = state.exercises.find(e => e.id === exerciseId);
-  const n = ex?.defaultSets ?? 3;
   const sets = [];
-  for (let i = 0; i < n; i++) sets.push({ load: "", reps: "" });
+  if (ex?.type === "cardio") {
+    sets.push({ duration: "", distance: "", avgHR: "" });
+  } else {
+    const n = ex?.defaultSets ?? 3;
+    for (let i = 0; i < n; i++) sets.push({ load: "", reps: "" });
+  }
   w.entries.push({ exerciseId, sets });
   saveState();
 }
@@ -635,6 +667,11 @@ function renderEntry(entry, idx) {
     .sort((a,b) => b.date.localeCompare(a.date))[0];
   const prevSets = prevSession?.entries.find(e => e.exerciseId === ex.id)?.sets ?? [];
 
+  if (ex.type === "cardio") return renderCardioEntry(entry, idx, ex, prevSets, w);
+  return renderStrengthEntry(entry, idx, ex, prevSets, w);
+}
+
+function renderStrengthEntry(entry, idx, ex, prevSets, w) {
   const div = document.createElement("div");
   div.className = "entry";
   div.dataset.idx = idx;
@@ -649,8 +686,8 @@ function renderEntry(entry, idx) {
     return `
       <tr>
         <td class="set-num">${si+1}</td>
-        <td><input class="inp-load" type="number" inputmode="decimal" step="0.5" min="0" value="${s.load}" placeholder="${u}"></td>
-        <td><input class="inp-reps" type="number" inputmode="numeric" step="1" min="0" value="${s.reps}" placeholder="reps"></td>
+        <td><input class="inp-load" type="number" inputmode="decimal" step="0.5" min="0" value="${s.load ?? ""}" placeholder="${u}"></td>
+        <td><input class="inp-reps" type="number" inputmode="numeric" step="1" min="0" value="${s.reps ?? ""}" placeholder="reps"></td>
         <td class="col-prev">${prevText}</td>
         <td class="col-actions"><button class="icon-btn danger btn-remove-set" aria-label="Remove set">×</button></td>
       </tr>`;
@@ -680,7 +717,6 @@ function renderEntry(entry, idx) {
     </div>
   `;
 
-  // Wire up handlers
   div.querySelector(".btn-add-set").onclick = () => {
     entry.sets.push({ load: "", reps: "" });
     saveState();
@@ -708,6 +744,95 @@ function renderEntry(entry, idx) {
 
   updateEntryStats(div, entry, prevSets);
   return div;
+}
+
+function renderCardioEntry(entry, idx, ex, prevSets, w) {
+  const div = document.createElement("div");
+  div.className = "entry entry-cardio";
+  div.dataset.idx = idx;
+
+  // Cardio = single bout by default. Use first "set" as the bout.
+  if (entry.sets.length === 0) entry.sets.push({ duration: "", distance: "", avgHR: "" });
+  const s = entry.sets[0];
+  const prev = prevSets[0];
+  const prevBits = [];
+  if (prev?.duration) prevBits.push(`${parseNum(prev.duration)} min`);
+  if (prev?.distance) prevBits.push(`${parseNum(prev.distance)} mi`);
+  if (prev?.avgHR) prevBits.push(`${parseNum(prev.avgHR)} bpm`);
+  const prevLabel = prevBits.length ? `Prev: ${prevBits.join(" · ")}` : "";
+
+  div.innerHTML = `
+    <div class="entry-head">
+      <div>
+        <div class="entry-name">${escapeHtml(ex.name)} <span class="cardio-tag">cardio</span></div>
+        <div class="entry-sub muted">${escapeHtml(prevLabel)}</div>
+      </div>
+      <div class="entry-actions">
+        <button class="icon-btn danger btn-remove-entry" aria-label="Remove exercise">🗑</button>
+      </div>
+    </div>
+    <div class="cardio-grid">
+      <label>
+        <span class="label">Duration (min)</span>
+        <input class="inp-duration" type="number" inputmode="decimal" step="1" min="0" value="${s.duration ?? ""}" placeholder="min">
+      </label>
+      <label>
+        <span class="label">Distance (mi)</span>
+        <input class="inp-distance" type="number" inputmode="decimal" step="0.1" min="0" value="${s.distance ?? ""}" placeholder="miles">
+      </label>
+      <label>
+        <span class="label">Avg HR</span>
+        <input class="inp-avghr" type="number" inputmode="numeric" step="1" min="0" value="${s.avgHR ?? ""}" placeholder="bpm">
+      </label>
+    </div>
+    <div class="entry-footer">
+      <div class="entry-stats">
+        <span>Total <strong class="stat-cardio-total">0 min</strong></span>
+        <span class="stat-cardio-pace"></span>
+        <span class="stat-delta"></span>
+      </div>
+    </div>
+  `;
+
+  div.querySelector(".btn-remove-entry").onclick = () => {
+    w.entries.splice(idx, 1);
+    saveState();
+    renderToday();
+  };
+  const update = () => { saveState(); updateCardioStats(div, entry, prevSets); };
+  div.querySelector(".inp-duration").addEventListener("input", e => { s.duration = e.target.value; update(); });
+  div.querySelector(".inp-distance").addEventListener("input", e => { s.distance = e.target.value; update(); });
+  div.querySelector(".inp-avghr").addEventListener("input", e => { s.avgHR = e.target.value; update(); });
+
+  updateCardioStats(div, entry, prevSets);
+  return div;
+}
+
+function updateCardioStats(div, entry, prevSets) {
+  const s = entry.sets[0] || {};
+  const dur = parseNum(s.duration);
+  const dist = parseNum(s.distance);
+  div.querySelector(".stat-cardio-total").textContent = dur ? `${fmt(dur)} min` : "—";
+  const paceEl = div.querySelector(".stat-cardio-pace");
+  if (dur > 0 && dist > 0) {
+    const paceMin = dur / dist;
+    const min = Math.floor(paceMin);
+    const sec = Math.round((paceMin - min) * 60);
+    paceEl.innerHTML = `Pace <strong>${min}:${String(sec).padStart(2,"0")}/mi</strong>`;
+  } else {
+    paceEl.textContent = "";
+  }
+  const delta = div.querySelector(".stat-delta");
+  const prev = prevSets[0];
+  const prevDur = parseNum(prev?.duration);
+  if (prevDur > 0 && dur > 0) {
+    const diff = dur - prevDur;
+    if (Math.abs(diff) < 0.5) delta.textContent = "= same";
+    else if (diff > 0) delta.innerHTML = `<span class="delta-up">▲ +${fmt(diff)} min</span>`;
+    else delta.innerHTML = `<span class="delta-down">▼ ${fmt(diff)} min</span>`;
+  } else {
+    delta.textContent = "";
+  }
 }
 
 function updateEntryStats(div, entry, prevSets) {
@@ -897,9 +1022,123 @@ function renderProgress() {
     ex.onchange = () => renderExerciseCharts(ex.value);
   }
 
+  renderThisWeekTiles();
   renderTotalVolume();
+  renderPRList();
   renderExerciseCharts(ex.value || ex.options[0]?.value);
-  renderWowTable();
+}
+
+// Compact per-workout stats shared by This-Week tile and PR list
+function workoutStats(w) {
+  let volume = 0, sets = 0, best1rm = 0, durationMin = 0;
+  w.entries.forEach(e => {
+    const ex = state.exercises.find(x => x.id === e.exerciseId);
+    if (ex?.type === "cardio") {
+      const bout = e.sets[0];
+      durationMin += parseNum(bout?.duration);
+      return;
+    }
+    e.sets.forEach(s => {
+      const v = setVolume(s.load, s.reps);
+      if (v > 0) { volume += v; sets++; }
+      const r = oneRM(parseNum(s.load), parseNum(s.reps));
+      if (r > best1rm) best1rm = r;
+    });
+  });
+  return { volume, sets, best1rm, durationMin };
+}
+
+function renderThisWeekTiles() {
+  const wrap = $("#this-week-tiles");
+  if (!wrap) return;
+  const todayD = new Date(todayISO() + "T00:00:00");
+  const dayNum = (todayD.getDay() + 6) % 7; // Mon=0
+  const mon = new Date(todayD); mon.setDate(mon.getDate() - dayNum);
+  const prevMon = new Date(mon); prevMon.setDate(prevMon.getDate() - 7);
+
+  const inRange = (d, from, to) => {
+    const dd = new Date(d + "T00:00:00");
+    return dd >= from && dd < to;
+  };
+  const nextMon = new Date(mon); nextMon.setDate(nextMon.getDate() + 7);
+
+  const thisWs = state.workouts.filter(w => w.id !== activeWorkoutId && inRange(w.date, mon, nextMon));
+  const prevWs = state.workouts.filter(w => w.id !== activeWorkoutId && inRange(w.date, prevMon, mon));
+
+  const agg = (arr) => arr.reduce((acc, w) => {
+    const s = workoutStats(w);
+    acc.workouts++;
+    acc.volume += s.volume;
+    acc.sets += s.sets;
+    // Duration from start/end times, else fall back to cardio bout durations
+    const wallMin = durationMinutes(w.startTime, w.endTime);
+    acc.minutes += wallMin || s.durationMin;
+    return acc;
+  }, { workouts: 0, volume: 0, sets: 0, minutes: 0 });
+
+  const now = agg(thisWs);
+  const past = agg(prevWs);
+
+  const tile = (label, value, unit, curNum, prevNum, precision = 0) => {
+    const diff = curNum - prevNum;
+    let delta = "";
+    if (prevNum > 0) {
+      const cls = diff > 0 ? "up" : diff < 0 ? "down" : "";
+      const sign = diff > 0 ? "+" : "";
+      delta = `<div class="tile-delta ${cls}">${sign}${fmt(diff, precision)} vs last wk</div>`;
+    } else if (curNum > 0) {
+      delta = `<div class="tile-delta muted">first week</div>`;
+    }
+    return `
+      <div class="week-tile">
+        <div class="tile-label">${label}</div>
+        <div class="tile-value">${value}<span class="tile-unit">${unit}</span></div>
+        ${delta}
+      </div>`;
+  };
+
+  wrap.innerHTML =
+    tile("Workouts", now.workouts, "", now.workouts, past.workouts) +
+    tile("Volume", fmt(now.volume), " " + state.settings.units, now.volume, past.volume) +
+    tile("Sets", now.sets, "", now.sets, past.sets) +
+    tile("Time", (now.minutes/60).toFixed(1), " hr", now.minutes/60, past.minutes/60, 1);
+
+  const fmtRange = (d1, d2) => `${d1.toLocaleDateString(undefined,{month:"short",day:"numeric"})} – ${d2.toLocaleDateString(undefined,{month:"short",day:"numeric"})}`;
+  const sun = new Date(nextMon); sun.setDate(sun.getDate() - 1);
+  $("#this-week-range").textContent = fmtRange(mon, sun);
+}
+
+function renderPRList() {
+  const list = $("#pr-list");
+  if (!list) return;
+  const prByEx = new Map();
+  state.workouts.filter(w => w.id !== activeWorkoutId).forEach(w => {
+    w.entries.forEach(e => {
+      const ex = state.exercises.find(x => x.id === e.exerciseId);
+      if (!ex || ex.type === "cardio") return;
+      e.sets.forEach(s => {
+        const load = parseNum(s.load), reps = parseNum(s.reps);
+        const r = oneRM(load, reps);
+        if (r <= 0) return;
+        const cur = prByEx.get(ex.id);
+        if (!cur || r > cur.best1rm) {
+          prByEx.set(ex.id, { name: ex.name, best1rm: r, load, reps, date: w.date });
+        }
+      });
+    });
+  });
+  const items = Array.from(prByEx.values()).sort((a,b) => b.best1rm - a.best1rm).slice(0, 12);
+  if (items.length === 0) {
+    list.innerHTML = `<div class="muted small">Log a few sets to see PRs.</div>`;
+    return;
+  }
+  list.innerHTML = items.map(pr => `
+    <div class="pr-row">
+      <div class="pr-name">${escapeHtml(pr.name)}</div>
+      <div class="pr-detail">${pr.load}×${pr.reps} · ${prettyDate(pr.date)}</div>
+      <div class="pr-value">${pr.best1rm.toFixed(1)} <span class="muted small">${state.settings.units}</span></div>
+    </div>
+  `).join("");
 }
 
 function getWeekData() {
@@ -1079,16 +1318,18 @@ function openExerciseEditor(id) {
   const modal = $("#exercise-edit-modal");
   const title = $("#exercise-edit-title");
   const nameInp = $("#exercise-edit-name");
+  const typeInp = $("#exercise-edit-type");
   const setsInp = $("#exercise-edit-sets");
   const repInp = $("#exercise-edit-reprange");
   const daysInp = $("#exercise-edit-days");
   const delBtn = $("#btn-exercise-edit-delete");
 
   const isNew = !id;
-  const ex = isNew ? { id: uid(), name: "", defaultSets: 3, defaultRepRange: "", days: [] } : state.exercises.find(e => e.id === id);
+  const ex = isNew ? { id: uid(), name: "", type: "strength", defaultSets: 3, defaultRepRange: "", days: [] } : state.exercises.find(e => e.id === id);
   if (!ex) return;
   title.textContent = isNew ? "New exercise" : "Edit exercise";
   nameInp.value = ex.name;
+  typeInp.value = ex.type || "strength";
   setsInp.value = ex.defaultSets;
   repInp.value = ex.defaultRepRange;
   daysInp.value = ex.days.join(", ");
@@ -1098,6 +1339,7 @@ function openExerciseEditor(id) {
     const name = nameInp.value.trim();
     if (!name) { toast("Name is required"); return; }
     ex.name = name;
+    ex.type = typeInp.value === "cardio" ? "cardio" : "strength";
     ex.defaultSets = parseInt(setsInp.value) || 3;
     ex.defaultRepRange = repInp.value.trim();
     ex.days = daysInp.value.split(",").map(d => d.trim()).filter(Boolean);

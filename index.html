@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <title>Workout Tracker</title>
-<link rel="stylesheet" href="styles.css?v=11">
+<link rel="stylesheet" href="styles.css?v=12">
 </head>
 <body>
 
@@ -110,21 +110,31 @@
     <div class="topbar-title">Progress</div>
   </header>
   <div class="container">
+
     <div class="card">
-      <h3>Total weekly volume</h3>
+      <h3>This week</h3>
+      <div id="this-week-tiles" class="week-tiles"></div>
+      <div class="muted small" id="this-week-range"></div>
+    </div>
+
+    <div class="card">
+      <h3>Weekly volume trend</h3>
       <div class="chart-wrap"><canvas id="chart-total-volume"></canvas></div>
     </div>
+
     <div class="card">
-      <h3>Per-exercise progress</h3>
+      <h3>Personal records <span class="muted small" style="font-weight: 400;">estimated 1RM</span></h3>
+      <div id="pr-list" class="pr-list"></div>
+    </div>
+
+    <div class="card">
+      <h3>Per-exercise history</h3>
       <select id="progress-exercise"></select>
       <div class="metrics" id="progress-metrics"></div>
       <div class="chart-wrap"><canvas id="chart-exercise-volume"></canvas></div>
       <div class="chart-wrap"><canvas id="chart-exercise-1rm"></canvas></div>
     </div>
-    <div class="card">
-      <h3>Week-over-week table</h3>
-      <div class="table-scroll"><table id="wow-table"></table></div>
-    </div>
+
   </div>
 </section>
 
@@ -427,6 +437,13 @@
       <input type="text" id="exercise-edit-name">
     </label>
     <label>
+      <span class="label">Type</span>
+      <select id="exercise-edit-type">
+        <option value="strength">Strength — sets / reps / weight</option>
+        <option value="cardio">Cardio — duration / distance / HR</option>
+      </select>
+    </label>
+    <label>
       <span class="label">Default sets</span>
       <input type="number" id="exercise-edit-sets" min="1" max="10" step="1" inputmode="numeric">
     </label>
@@ -455,7 +472,7 @@
 </nav>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="app.js?v=11"></script>
-<script type="module" src="firebase-sync.js?v=11"></script>
+<script src="app.js?v=12"></script>
+<script type="module" src="firebase-sync.js?v=12"></script>
 </body>
 </html>
