@@ -1550,7 +1550,10 @@ function updateBalance(date, n) {
 }
 
 function renderHealthSnapshot() {
-  const configured = !!state.settings.gistId;
+  // Show snapshot as soon as we have any data (from the /api/health Shortcut) OR
+  // when a legacy Gist ID is configured.
+  const hasData = !!(state.health?.data && Object.keys(state.health.data).length);
+  const configured = hasData || !!state.settings.gistId;
   $("#health-unconfigured").classList.toggle("hidden", configured);
   $("#health-snapshot").classList.toggle("hidden", !configured);
   if (!configured) return;
