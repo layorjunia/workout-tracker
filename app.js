@@ -308,7 +308,11 @@ function defaultProfile() {
   return { height: 70, weight: 175, age: 28, sex: "male", activity: "moderate" };
 }
 function defaultState() {
-  const s = {
+  // Fresh installs are EMPTY (no seed workouts, no fake PRs). The user's real
+  // data only arrives via Firebase cloud sync after they sign in. Defaults —
+  // exercise library, templates, profile — are shared across everyone since
+  // they're just starting points, not personal data.
+  return {
     schemaVersion: 1,
     exercises: SEED.exercises.map(e => ({ id: uid(), ...e })),
     days: JSON.parse(JSON.stringify(SEED.days)),
@@ -318,10 +322,8 @@ function defaultState() {
     profile: defaultProfile(),
     nutrition: [],
     health: { lastFetch: null, data: null, lastError: null },
-    seedHistoryLoaded: false,
+    seedHistoryLoaded: true, // suppress migrate() from ever loading synthetic data
   };
-  loadHistoryInto(s);
-  return s;
 }
 function migrate(s) {
   s.schemaVersion ??= 1;
@@ -397,8 +399,10 @@ function migrate(s) {
     w.endTime ??= "";
   });
 
-  // Auto-load history once if no workouts have been logged
-  if (!s.seedHistoryLoaded && s.workouts.length === 0) loadHistoryInto(s);
+  // Seed history is disabled — new users see empty state until they sign in
+  // and pull their real data from Firebase. seedHistoryLoaded is force-set so
+  // this branch never runs regardless of what an old export contains.
+  s.seedHistoryLoaded = true;
 
   // One-time fix: I originally seeded the imported sheet history with 2026 dates;
   // the spreadsheet's data was actually from 2025. Shift any workout dated to one of
@@ -1727,9 +1731,19 @@ function bindEvents() {
       btn.textContent = "Sign in / Create account";
     }
   };
-  $("#btn-sync-signout").onclick = () => {
-    if (!confirm("Sign out? Your local data stays; cloud sync stops.")) return;
-    window.WorkoutSync?.signOut?.();
+  $("#btn-sync-signout").onclick = async () => {
+    if (!confirm("Sign out? Your workouts stay in the cloud. This browser will show empty defaults until you sign in again.")) return;
+    await window.WorkoutSync?.signOut?.();
+    // Wipe local storage of user data so no data leaks to the next opener of this browser
+    localStorage.removeItem(STORAGE_KEY);
+    activeWorkoutId = null;
+    state = defaultState();
+    saveState();
+    applyTheme();
+    $("#history-filter") && ($("#history-filter").innerHTML = '<option value="">All exercises</option>');
+    $("#progress-exercise") && ($("#progress-exercise").innerHTML = "");
+    showView("settings");
+    toast("Signed out");
   };
   $("#btn-sync-force").onclick = () => window.WorkoutSync?.forcePush?.();
   $("#btn-templates-add").onclick = () => {
