@@ -1716,7 +1716,7 @@ function bindEvents() {
     const identifier = idInput.value.trim();
     const pin = pinInput.value;
     if (!identifier) { errEl.textContent = "Enter a name or email"; return; }
-    if (!pin || pin.length < 6) { errEl.textContent = "PIN needs 6+ digits"; return; }
+    if (!/^\d{4}$/.test(pin)) { errEl.textContent = "PIN must be exactly 4 digits"; return; }
     const btn = $("#btn-sync-signin");
     btn.disabled = true;
     btn.textContent = "Signing in…";

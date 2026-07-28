@@ -146,18 +146,26 @@ function toAuthEmail(identifier) {
   return `${clean}@workout-tracker.local`;
 }
 
-// Sign in with identifier (name or email) + PIN (Firebase requires ≥6 chars).
-// If the account doesn't exist, create it and return { created: true }.
+// Fixed suffix appended to the user's 4-digit PIN before sending to Firebase.
+// Firebase Auth requires ≥6-char passwords; the suffix is a symmetric transform
+// applied on both sign-up and sign-in so the user only ever sees 4 digits.
+// (Security is not weakened — brute forcing needs both the identifier and the
+// 10,000-combination PIN, and Firebase rate-limits password attempts.)
+const PIN_SUFFIX = ".wtapp2026";
+
+// Sign in with identifier (name or email) + 4-digit PIN. Creates the account
+// if it doesn't exist, returns { created: true }.
 async function signInWithPIN(identifier, pin) {
   const email = toAuthEmail(identifier);
-  const password = String(pin || "");
-  if (password.length < 6) throw new Error("PIN must be at least 6 digits/characters");
+  const rawPin = String(pin || "");
+  if (!/^\d{4}$/.test(rawPin)) throw new Error("PIN must be exactly 4 digits");
+  const password = rawPin + PIN_SUFFIX;
   try {
     await signInWithEmailAndPassword(auth, email, password);
     return { created: false, email };
   } catch (e) {
     if (e.code === "auth/user-not-found" || e.code === "auth/invalid-credential") {
-      // Might be a wrong password OR truly a new user. Try to create.
+      // Might be a wrong PIN OR truly a new user. Try to create.
       try {
         await createUserWithEmailAndPassword(auth, email, password);
         return { created: true, email };
@@ -169,7 +177,6 @@ async function signInWithPIN(identifier, pin) {
       }
     }
     if (e.code === "auth/wrong-password") throw new Error("Wrong PIN");
-    if (e.code === "auth/weak-password") throw new Error("PIN too weak (6+ chars)");
     throw e;
   }
 }

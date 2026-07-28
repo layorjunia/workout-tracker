@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <title>Workout Tracker</title>
-<link rel="stylesheet" href="styles.css?v=14">
+<link rel="stylesheet" href="styles.css?v=15">
 </head>
 <body>
 
@@ -331,14 +331,14 @@
     <div class="card">
       <h3>Cloud sync</h3>
       <div id="sync-signed-out">
-        <p class="muted small">Sign in with a name (or email) and a 6+ digit PIN. Same name + PIN on your phone and laptop = same synced data. First time you use a name, an account is created automatically.</p>
+        <p class="muted small">Sign in with a name (or email) and a 4-digit PIN. Same name + PIN on your phone and laptop = same synced data. First time you use a name, an account is created automatically.</p>
         <label>
           <span class="label">Name or email</span>
           <input type="text" id="sync-identifier" placeholder="e.g. jacob" autocapitalize="none" autocomplete="username" autocorrect="off" spellcheck="false">
         </label>
         <label>
-          <span class="label">PIN (6+ digits)</span>
-          <input type="password" id="sync-pin" inputmode="numeric" placeholder="••••••" autocomplete="current-password">
+          <span class="label">4-digit PIN</span>
+          <input type="password" id="sync-pin" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="••••" autocomplete="current-password">
         </label>
         <div id="sync-signin-error" class="muted small" style="color: var(--danger); min-height: 16px;"></div>
         <button class="btn btn-primary" id="btn-sync-signin" style="width:100%; margin-top:8px">Sign in / Create account</button>
@@ -481,7 +481,7 @@
 </nav>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="app.js?v=14"></script>
-<script type="module" src="firebase-sync.js?v=14"></script>
+<script src="app.js?v=15"></script>
+<script type="module" src="firebase-sync.js?v=15"></script>
 </body>
 </html>
