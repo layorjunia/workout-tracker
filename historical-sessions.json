@@ -1,0 +1,978 @@
+[
+  {
+    "date": "2026-04-13",
+    "day": "Day 1",
+    "entries": [
+      {
+        "exercise": "Seated Chest Press Machine",
+        "sets": [
+          [
+            100.0,
+            11
+          ],
+          [
+            100.0,
+            9
+          ],
+          [
+            115.0,
+            8
+          ]
+        ]
+      },
+      {
+        "exercise": "Tricep Cable Pushdown",
+        "sets": [
+          [
+            80.0,
+            8
+          ],
+          [
+            80.0,
+            8
+          ],
+          [
+            80.0,
+            6
+          ]
+        ]
+      },
+      {
+        "exercise": "Seated Shoulder Press",
+        "sets": [
+          [
+            30.0,
+            8
+          ],
+          [
+            65.0,
+            6
+          ],
+          [
+            55.0,
+            8
+          ]
+        ]
+      },
+      {
+        "exercise": "Tricep Dips (Assisted)",
+        "sets": [
+          [
+            50.0,
+            7
+          ],
+          [
+            70.0,
+            7
+          ],
+          [
+            70.0,
+            8
+          ]
+        ]
+      },
+      {
+        "exercise": "Pectoral Fly",
+        "sets": [
+          [
+            100.0,
+            10
+          ],
+          [
+            115.0,
+            10
+          ],
+          [
+            115.0,
+            12
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-14",
+    "day": "Day 2",
+    "entries": [
+      {
+        "exercise": "Row Machine",
+        "sets": [
+          [
+            100.0,
+            12
+          ],
+          [
+            115.0,
+            10
+          ],
+          [
+            115.0,
+            9
+          ]
+        ]
+      },
+      {
+        "exercise": "Lat Pulldown",
+        "sets": [
+          [
+            140.0,
+            7
+          ],
+          [
+            140.0,
+            8
+          ],
+          [
+            140.0,
+            8
+          ]
+        ]
+      },
+      {
+        "exercise": "Barbell Shrugs",
+        "sets": [
+          [
+            90.0,
+            13
+          ],
+          [
+            90.0,
+            14
+          ],
+          [
+            100.0,
+            12
+          ]
+        ]
+      },
+      {
+        "exercise": "Cable Ab Curl",
+        "sets": [
+          [
+            57.5,
+            12
+          ],
+          [
+            72.5,
+            10
+          ],
+          [
+            80.0,
+            9
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-16",
+    "day": "Day 4",
+    "entries": [
+      {
+        "exercise": "Chest Press Machine",
+        "sets": [
+          [
+            100.0,
+            13
+          ],
+          [
+            115.0,
+            9
+          ],
+          [
+            130.0,
+            7
+          ]
+        ]
+      },
+      {
+        "exercise": "Neck Flexion",
+        "sets": [
+          [
+            25.0,
+            8
+          ],
+          [
+            25.0,
+            10
+          ],
+          [
+            25.0,
+            10
+          ]
+        ]
+      },
+      {
+        "exercise": "Tricep Dips (Assisted)",
+        "sets": [
+          [
+            55.0,
+            6
+          ],
+          [
+            55.0,
+            5
+          ],
+          [
+            55.0,
+            7
+          ]
+        ]
+      },
+      {
+        "exercise": "Preacher Curl",
+        "sets": [
+          [
+            95.0,
+            12
+          ],
+          [
+            95.0,
+            12
+          ],
+          [
+            110.0,
+            10
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-17",
+    "day": "Day 5",
+    "entries": [
+      {
+        "exercise": "Squats",
+        "sets": [
+          [
+            20.0,
+            8
+          ],
+          [
+            40.0,
+            8
+          ],
+          [
+            50.0,
+            8
+          ]
+        ]
+      },
+      {
+        "exercise": "Leg Curl Machine",
+        "sets": [
+          [
+            120.0,
+            10
+          ],
+          [
+            130.0,
+            11
+          ],
+          [
+            130.0,
+            12
+          ]
+        ]
+      },
+      {
+        "exercise": "Hip Abduction",
+        "sets": [
+          [
+            235.0,
+            11
+          ],
+          [
+            235.0,
+            11
+          ],
+          [
+            220.0,
+            10
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-20",
+    "day": "Day 1",
+    "entries": [
+      {
+        "exercise": "Seated Chest Press Machine",
+        "sets": [
+          [
+            115.0,
+            12
+          ],
+          [
+            130.0,
+            8
+          ],
+          [
+            145.0,
+            6
+          ]
+        ]
+      },
+      {
+        "exercise": "Tricep Cable Pushdown",
+        "sets": [
+          [
+            52.5,
+            6
+          ],
+          [
+            42.5,
+            12
+          ],
+          [
+            47.5,
+            12
+          ]
+        ]
+      },
+      {
+        "exercise": "Seated Shoulder Press",
+        "sets": [
+          [
+            65.0,
+            10
+          ],
+          [
+            65.0,
+            8
+          ],
+          [
+            55.0,
+            7
+          ]
+        ]
+      },
+      {
+        "exercise": "Tricep Dips (Assisted)",
+        "sets": [
+          [
+            55.0,
+            6
+          ],
+          [
+            55.0,
+            6
+          ],
+          [
+            55.0,
+            9
+          ]
+        ]
+      },
+      {
+        "exercise": "Pectoral Fly",
+        "sets": [
+          [
+            115.0,
+            12
+          ],
+          [
+            130.0,
+            8
+          ],
+          [
+            165.0,
+            3
+          ]
+        ]
+      },
+      {
+        "exercise": "Ab Twist Machine",
+        "sets": [
+          [
+            130.0,
+            11
+          ],
+          [
+            130.0,
+            11
+          ],
+          [
+            150.0,
+            10
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-21",
+    "day": "Day 2",
+    "entries": [
+      {
+        "exercise": "Row Machine",
+        "sets": [
+          [
+            115.0,
+            14
+          ],
+          [
+            130.0,
+            12
+          ],
+          [
+            145.0,
+            10
+          ]
+        ]
+      },
+      {
+        "exercise": "Preacher Curl",
+        "sets": [
+          [
+            110.0,
+            10
+          ],
+          [
+            110.0,
+            9
+          ],
+          [
+            110.0,
+            9
+          ]
+        ]
+      },
+      {
+        "exercise": "Lat Pulldown",
+        "sets": [
+          [
+            140.0,
+            9
+          ],
+          [
+            180.0,
+            3
+          ],
+          [
+            140.0,
+            9
+          ]
+        ]
+      },
+      {
+        "exercise": "Barbell Shrugs",
+        "sets": [
+          [
+            90.0,
+            14
+          ],
+          [
+            110.0,
+            12
+          ],
+          [
+            110.0,
+            10
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-23",
+    "day": "Day 4",
+    "entries": [
+      {
+        "exercise": "Chest Press Machine",
+        "sets": [
+          [
+            130.0,
+            10
+          ],
+          [
+            130.0,
+            10
+          ],
+          [
+            145.0,
+            8
+          ]
+        ]
+      },
+      {
+        "exercise": "Wide Grip Pull-up (Assisted)",
+        "sets": [
+          [
+            40.0,
+            8
+          ],
+          [
+            40.0,
+            5
+          ],
+          [
+            40.0,
+            5
+          ]
+        ]
+      },
+      {
+        "exercise": "Neck Flexion",
+        "sets": [
+          [
+            25.0,
+            12
+          ],
+          [
+            25.0,
+            12
+          ],
+          [
+            25.0,
+            12
+          ]
+        ]
+      },
+      {
+        "exercise": "Tricep Dips (Assisted)",
+        "sets": [
+          [
+            40.0,
+            8
+          ],
+          [
+            40.0,
+            9
+          ],
+          [
+            40.0,
+            10
+          ]
+        ]
+      },
+      {
+        "exercise": "Preacher Curl",
+        "sets": [
+          [
+            125.0,
+            12
+          ],
+          [
+            125.0,
+            7
+          ],
+          [
+            110.0,
+            10
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-24",
+    "day": "Day 5",
+    "entries": [
+      {
+        "exercise": "Squats",
+        "sets": [
+          [
+            45.0,
+            10
+          ],
+          [
+            65.0,
+            8
+          ],
+          [
+            85.0,
+            6
+          ]
+        ]
+      },
+      {
+        "exercise": "Seated Leg Extension",
+        "sets": [
+          [
+            160.0,
+            10
+          ],
+          [
+            160.0,
+            10
+          ],
+          [
+            145.0,
+            10
+          ]
+        ]
+      },
+      {
+        "exercise": "Roman Chair",
+        "sets": [
+          [
+            25.0,
+            12
+          ],
+          [
+            25.0,
+            12
+          ],
+          [
+            25.0,
+            12
+          ]
+        ]
+      },
+      {
+        "exercise": "Leg Curl Machine",
+        "sets": [
+          [
+            175.0,
+            9
+          ],
+          [
+            160.0,
+            10
+          ],
+          [
+            160.0,
+            9
+          ]
+        ]
+      },
+      {
+        "exercise": "Hip Abduction",
+        "sets": [
+          [
+            235.0,
+            10
+          ],
+          [
+            235.0,
+            10
+          ],
+          [
+            220.0,
+            12
+          ]
+        ]
+      },
+      {
+        "exercise": "Hip Adduction",
+        "sets": [
+          [
+            250.0,
+            14
+          ],
+          [
+            305.0,
+            18
+          ],
+          [
+            305.0,
+            11
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-27",
+    "day": "Day 1",
+    "entries": [
+      {
+        "exercise": "Seated Chest Press Machine",
+        "sets": [
+          [
+            145.0,
+            10
+          ],
+          [
+            145.0,
+            10
+          ],
+          [
+            160.0,
+            6
+          ]
+        ]
+      },
+      {
+        "exercise": "Tricep Cable Pushdown Rope",
+        "sets": [
+          [
+            52.5,
+            12
+          ],
+          [
+            42.5,
+            10
+          ],
+          [
+            42.5,
+            11
+          ]
+        ]
+      },
+      {
+        "exercise": "Seated Shoulder Press",
+        "sets": [
+          [
+            65.0,
+            9
+          ],
+          [
+            65.0,
+            8
+          ],
+          [
+            65.0,
+            7
+          ]
+        ]
+      },
+      {
+        "exercise": "Dumbbell Side Lateral Raise",
+        "sets": [
+          [
+            20.0,
+            7
+          ],
+          [
+            15.0,
+            10
+          ],
+          [
+            15.0,
+            10
+          ]
+        ]
+      },
+      {
+        "exercise": "Pectoral Fly",
+        "sets": [
+          [
+            160.0,
+            5
+          ],
+          [
+            150.0,
+            6
+          ],
+          [
+            145.0,
+            8
+          ]
+        ]
+      },
+      {
+        "exercise": "Ab Twist Machine",
+        "sets": [
+          [
+            130.0,
+            11
+          ],
+          [
+            145.0,
+            10
+          ],
+          [
+            150.0,
+            10
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-28",
+    "day": "Day 2",
+    "entries": [
+      {
+        "exercise": "Row Machine",
+        "sets": [
+          [
+            145.0,
+            10
+          ],
+          [
+            145.0,
+            10
+          ],
+          [
+            160.0,
+            12
+          ]
+        ]
+      },
+      {
+        "exercise": "Wide Grip Pull-up (Assisted)",
+        "sets": [
+          [
+            40.0,
+            6
+          ]
+        ]
+      },
+      {
+        "exercise": "Preacher Curl",
+        "sets": [
+          [
+            125.0,
+            12
+          ],
+          [
+            125.0,
+            8
+          ],
+          [
+            125.0,
+            7
+          ]
+        ]
+      },
+      {
+        "exercise": "Barbell Shrugs",
+        "sets": [
+          [
+            110.0,
+            15
+          ],
+          [
+            110.0,
+            12
+          ],
+          [
+            110.0,
+            13
+          ]
+        ]
+      },
+      {
+        "exercise": "Cable Ab Curl",
+        "sets": [
+          [
+            87.5,
+            10
+          ],
+          [
+            80.0,
+            13
+          ],
+          [
+            80.0,
+            12
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-01",
+    "day": "Day 5",
+    "entries": [
+      {
+        "exercise": "Squats Leg Press",
+        "sets": [
+          [
+            170.0,
+            12
+          ],
+          [
+            190.0,
+            13
+          ],
+          [
+            250.0,
+            9
+          ]
+        ]
+      },
+      {
+        "exercise": "Barbell Shrugs",
+        "sets": [
+          [
+            120.0,
+            10
+          ],
+          [
+            120.0,
+            10
+          ],
+          [
+            120.0,
+            10
+          ]
+        ]
+      },
+      {
+        "exercise": "Roman Chair",
+        "sets": [
+          [
+            0.0,
+            10
+          ],
+          [
+            35.0,
+            10
+          ],
+          [
+            35.0,
+            10
+          ]
+        ]
+      },
+      {
+        "exercise": "Leg Curl Machine",
+        "sets": [
+          [
+            160.0,
+            10
+          ],
+          [
+            160.0,
+            8
+          ],
+          [
+            160.0,
+            10
+          ]
+        ]
+      },
+      {
+        "exercise": "Hip Abduction",
+        "sets": [
+          [
+            250.0,
+            12
+          ],
+          [
+            250.0,
+            12
+          ],
+          [
+            250.0,
+            10
+          ]
+        ]
+      },
+      {
+        "exercise": "Ab Oblique Crunch Machine",
+        "sets": [
+          [
+            10.0,
+            10
+          ],
+          [
+            10.0,
+            10
+          ],
+          [
+            10.0,
+            10
+          ]
+        ]
+      }
+    ]
+  }
+]

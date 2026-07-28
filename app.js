@@ -1727,6 +1727,10 @@ function bindEvents() {
       const res = await window.WorkoutSync.signInWithPIN(identifier, pin);
       pinInput.value = "";
       if (res.created) toast(`New account created for "${identifier}"`);
+      // Hand credentials to the native HealthKit sync (no-op in the browser)
+      if (window.WorkoutNativeHealth?.isNative) {
+        window.WorkoutNativeHealth.setCredentials(identifier, pin);
+      }
     } catch (e) {
       errEl.textContent = e.message || String(e);
     } finally {
@@ -1737,6 +1741,7 @@ function bindEvents() {
   $("#btn-sync-signout").onclick = async () => {
     if (!confirm("Sign out? Your workouts stay in the cloud. This browser will show empty defaults until you sign in again.")) return;
     await window.WorkoutSync?.signOut?.();
+    window.WorkoutNativeHealth?.clearCredentials?.();
     // Wipe local storage of user data so no data leaks to the next opener of this browser
     localStorage.removeItem(STORAGE_KEY);
     activeWorkoutId = null;

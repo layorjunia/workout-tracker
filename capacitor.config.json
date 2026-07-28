@@ -1,0 +1,12 @@
+{
+  "appId": "com.layorjunia.workouttracker",
+  "appName": "Workout Tracker",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#0b0d10"
+  },
+  "server": {
+    "iosScheme": "capacitor"
+  }
+}
