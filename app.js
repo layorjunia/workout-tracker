@@ -44,16 +44,18 @@ const SEED = {
 
 // Default workout templates — copied into state.templates on first launch.
 // User edits live on state.templates; this constant is only the seed.
+// v2 (2026-07): updated to reflect what Jacob actually does now per recent workout logs.
 const DEFAULT_TEMPLATES = [
   {
     id: "tpl-push",
     name: "Push",
     subtitle: "Chest · Shoulders · Triceps",
     exercises: [
-      "Seated Chest Press Machine",
-      "Pectoral Fly",
-      "Seated Shoulder Press",
+      "Bench Press",
+      "Decline Chest Press - Barbell",
+      "Overhead Military Press",
       "Dumbbell Side Lateral Raise",
+      "Pectoral Fly",
       "Tricep Cable Pushdown",
     ],
   },
@@ -64,8 +66,8 @@ const DEFAULT_TEMPLATES = [
     exercises: [
       "Row Machine",
       "Lat Pulldown",
-      "Wide Grip Pull-up (Assisted)",
       "Preacher Curl",
+      "Hammer Dumbbell Curl",
       "Cable Face Pull",
     ],
   },
@@ -74,12 +76,12 @@ const DEFAULT_TEMPLATES = [
     name: "Legs",
     subtitle: "Quads · Hamstrings · Glutes · Calves",
     exercises: [
-      "Squats",
+      "Squats Leg Press",
       "Seated Leg Extension",
       "Leg Curl Machine",
       "Hip Abduction",
-      "Hip Adduction",
-      "Calf Raises",
+      "Standing Calf Raise",
+      "Back Extension",
     ],
   },
   {
@@ -87,14 +89,23 @@ const DEFAULT_TEMPLATES = [
     name: "Mix",
     subtitle: "Full body · upper + lower",
     exercises: [
-      "Chest Press Machine",
-      "Lat Pulldown",
-      "Squats",
-      "Tricep Dips (Assisted)",
+      "Bench Press",
+      "Row Machine",
+      "Squats Leg Press",
+      "Preacher Curl",
       "Ab Twist Machine",
     ],
   },
 ];
+
+// Names of the ORIGINAL (v1) default template exercises — used by the migration
+// to detect untouched templates that should be upgraded to v2 defaults.
+const V1_DEFAULT_TEMPLATE_EXERCISES = {
+  "Push": ["Seated Chest Press Machine","Pectoral Fly","Seated Shoulder Press","Dumbbell Side Lateral Raise","Tricep Cable Pushdown"],
+  "Pull": ["Row Machine","Lat Pulldown","Wide Grip Pull-up (Assisted)","Preacher Curl","Cable Face Pull"],
+  "Legs": ["Squats","Seated Leg Extension","Leg Curl Machine","Hip Abduction","Hip Adduction","Calf Raises"],
+  "Mix":  ["Chest Press Machine","Lat Pulldown","Squats","Tricep Dips (Assisted)","Ab Twist Machine"],
+};
 
 // Historical sessions imported from the original Google Sheets workout plan.
 // Auto-loaded on first launch (or when workouts is empty and history hasn't been seeded yet).
@@ -256,6 +267,8 @@ function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     lastSavedAt = Date.now();
     updateSavedIndicator();
+    // Schedule a debounced cloud upload (no-op if not signed in)
+    window.WorkoutSync?.scheduleCloudPush?.();
   } catch (e) {
     console.error("saveState failed", e);
     const ind = document.getElementById("saved-indicator");
@@ -315,6 +328,23 @@ function migrate(s) {
       subtitle: t.subtitle || "",
       exercises: t.exercises || [],
     }));
+  }
+
+  // v1 → v2 template refresh: if a template still contains the EXACT original
+  // v1 default exercise list, replace it with the v2 defaults (Jacob's actual
+  // current routine). Untouched-only — customized templates are left alone.
+  if (!s.templatesV2Applied) {
+    s.templates = s.templates.map(t => {
+      const v1 = V1_DEFAULT_TEMPLATE_EXERCISES[t.name];
+      if (!v1) return t;
+      const same = t.exercises.length === v1.length &&
+        t.exercises.every((ex, i) => ex === v1[i]);
+      if (!same) return t;
+      const v2 = DEFAULT_TEMPLATES.find(x => x.name === t.name);
+      if (!v2) return t;
+      return { ...t, exercises: [...v2.exercises], subtitle: v2.subtitle };
+    });
+    s.templatesV2Applied = true;
   }
 
   // Sync any new seed exercises into existing state (idempotent, name-matched)
@@ -1432,6 +1462,16 @@ function bindEvents() {
   $("#setting-theme").onchange = e => { state.settings.theme = e.target.value; saveState(); applyTheme(); };
   $("#btn-open-library").onclick = () => showView("library");
   $("#btn-open-templates").onclick = () => showView("templates");
+  $("#btn-sync-signin").onclick = () => {
+    window.WorkoutSync?.signInGoogle?.().catch(e => {
+      alert("Sign-in failed: " + (e.message || e));
+    });
+  };
+  $("#btn-sync-signout").onclick = () => {
+    if (!confirm("Sign out? Your local data stays; cloud sync stops.")) return;
+    window.WorkoutSync?.signOut?.();
+  };
+  $("#btn-sync-force").onclick = () => window.WorkoutSync?.forcePush?.();
   $("#btn-templates-add").onclick = () => {
     const name = (prompt("Template name (e.g. Upper, Lower, Core)") || "").trim();
     if (!name) return;
@@ -1541,6 +1581,78 @@ function maybeShowInstallBanner() {
   const banner = document.getElementById("install-banner");
   if (banner) banner.classList.remove("hidden");
 }
+
+/* ───────── Cloud sync bridge (Firebase — see firebase-sync.js) ───────── */
+let cloudUser = null;
+let cloudLastPushed = null;
+let cloudError = null;
+
+window.__getState = () => state;
+
+window.__onAuthChanged = (user) => {
+  cloudUser = user;
+  renderSyncCard();
+};
+
+window.__onCloudMerge = ({ direction, remote }) => {
+  if (direction === "pull" && remote) {
+    // Replace local state with cloud snapshot (cloud is source of truth on sign-in)
+    state = migrate(JSON.parse(JSON.stringify(remote)));
+    activeWorkoutId = null;
+    // Force local caches to rebuild
+    saveState();
+    // Re-render whatever view is showing
+    const active = document.querySelector(".view.active");
+    const viewName = active?.id.replace("view-", "");
+    if (viewName) showView(viewName);
+    else showView("today");
+    toast("Loaded workouts from cloud");
+  } else if (direction === "push") {
+    toast("Uploaded workouts to cloud");
+  }
+};
+
+window.__onCloudUpdated = (remoteState) => {
+  // Another device wrote — apply and re-render
+  state = migrate(JSON.parse(JSON.stringify(remoteState)));
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
+  const active = document.querySelector(".view.active");
+  const viewName = active?.id.replace("view-", "");
+  if (viewName) showView(viewName);
+  toast("Updated from another device");
+};
+
+window.__onCloudPushed = () => {
+  cloudLastPushed = Date.now();
+  cloudError = null;
+  renderSyncCard();
+};
+
+window.__onCloudError = (msg) => {
+  cloudError = msg;
+  renderSyncCard();
+};
+
+function renderSyncCard() {
+  const signedIn = !!cloudUser;
+  const outEl = document.getElementById("sync-signed-out");
+  const inEl = document.getElementById("sync-signed-in");
+  if (!outEl || !inEl) return;
+  outEl.classList.toggle("hidden", signedIn);
+  inEl.classList.toggle("hidden", !signedIn);
+  if (signedIn) {
+    document.getElementById("sync-name").textContent = cloudUser.name || cloudUser.email;
+    document.getElementById("sync-email").textContent = cloudUser.email;
+    const avatar = document.getElementById("sync-avatar");
+    if (cloudUser.photoURL) avatar.src = cloudUser.photoURL;
+    else avatar.style.display = "none";
+    let status = "Synced";
+    if (cloudLastPushed) status = `Last sync ${relativeTime(cloudLastPushed)}`;
+    if (cloudError) status = `⚠ ${cloudError}`;
+    document.getElementById("sync-status").textContent = status;
+  }
+}
+setInterval(renderSyncCard, 15000);
 
 function init() {
   applyTheme();

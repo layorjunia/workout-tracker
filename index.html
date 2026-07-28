@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <title>Workout Tracker</title>
-<link rel="stylesheet" href="styles.css?v=9">
+<link rel="stylesheet" href="styles.css?v=11">
 </head>
 <body>
 
@@ -319,6 +319,28 @@
       </label>
     </div>
     <div class="card">
+      <h3>Cloud sync</h3>
+      <div id="sync-signed-out">
+        <p class="muted small">Sign in with Google to sync your workouts across iPhone and laptop. Data is stored in a private Firebase document only you can read.</p>
+        <button class="btn btn-primary" id="btn-sync-signin" style="width:100%">Sign in with Google</button>
+      </div>
+      <div id="sync-signed-in" class="hidden">
+        <div class="row" style="align-items: center; gap: 12px;">
+          <img id="sync-avatar" src="" alt="" style="width:36px;height:36px;border-radius:50%;flex:0 0 auto">
+          <div style="flex:1;min-width:0">
+            <div id="sync-name" style="font-weight: 600;">—</div>
+            <div id="sync-email" class="muted small" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</div>
+          </div>
+        </div>
+        <div class="muted small" id="sync-status" style="margin-top:8px">—</div>
+        <div class="row actions">
+          <button class="btn btn-secondary" id="btn-sync-force">Sync now</button>
+          <button class="btn btn-ghost" id="btn-sync-signout">Sign out</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
       <h3>Workout templates</h3>
       <button class="btn btn-secondary" id="btn-open-templates" style="width:100%">Edit templates</button>
     </div>
@@ -433,6 +455,7 @@
 </nav>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=11"></script>
+<script type="module" src="firebase-sync.js?v=11"></script>
 </body>
 </html>
