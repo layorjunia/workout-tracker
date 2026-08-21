@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <title>Workout Tracker</title>
-<link rel="stylesheet" href="styles.css?v=22">
+<link rel="stylesheet" href="styles.css?v=23">
 </head>
 <body>
 
@@ -522,7 +522,15 @@
     </header>
     <input type="search" id="picker-search" placeholder="Search or create new" class="search">
     <div id="picker-list" class="picker-list"></div>
-    <button class="btn btn-primary" id="btn-picker-create">+ Create "<span id="picker-create-name"></span>"</button>
+    <div id="picker-create-row" class="picker-create hidden">
+      <div class="picker-create-title">Create “<span id="picker-create-name"></span>” as</div>
+      <div class="type-choices">
+        <button class="type-choice" data-type="strength"><strong>Strength</strong><span>weight × reps</span></button>
+        <button class="type-choice" data-type="bodyweight"><strong>Bodyweight</strong><span>reps, optional +lb</span></button>
+        <button class="type-choice" data-type="timed"><strong>Timed</strong><span>seconds per set</span></button>
+        <button class="type-choice" data-type="cardio"><strong>Cardio</strong><span>min · mi · HR</span></button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -589,10 +597,10 @@
   </button>
 </nav>
 
-<script src="vendor/chart.umd.js?v=22"></script>
-<script src="app.js?v=22"></script>
-<script src="analytics.js?v=22"></script>
-<script type="module" src="vendor/firebase-sync.bundle.js?v=22"></script>
-<script src="capacitor-health.js?v=22"></script>
+<script src="vendor/chart.umd.js?v=23"></script>
+<script src="app.js?v=23"></script>
+<script src="analytics.js?v=23"></script>
+<script type="module" src="vendor/firebase-sync.bundle.js?v=23"></script>
+<script src="capacitor-health.js?v=23"></script>
 </body>
 </html>

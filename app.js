@@ -74,9 +74,25 @@ function blankSet(type) {
   switch (type) {
     case "cardio":     return { duration: "", distance: "", avgHR: "" };
     case "timed":      return { seconds: "" };
-    case "bodyweight": return { reps: "" };
+    case "bodyweight": return { reps: "", load: "" };   // load = added weight (belt/vest), optional
     default:           return { load: "", reps: "" };
   }
+}
+// Reshape an entry's sets to the exercise's current type, keeping any fields the
+// two shapes share (reps/load survive strength ↔ bodyweight; cardio resets).
+function normalizeEntrySets(entry, type) {
+  const shape = Object.keys(blankSet(type));
+  let changed = false;
+  entry.sets = (entry.sets || []).map(s => {
+    const keys = Object.keys(s || {});
+    if (keys.length === shape.length && keys.every(k => shape.includes(k))) return s;
+    const out = blankSet(type);
+    for (const k of shape) if (s && s[k] !== undefined) out[k] = s[k];
+    changed = true;
+    return out;
+  });
+  if (!entry.sets.length) { entry.sets.push(blankSet(type)); changed = true; }
+  if (changed) saveState();
 }
 function setHasData(s) {
   return Object.values(s || {}).some(v => v !== "" && v != null);
@@ -897,6 +913,7 @@ function renderEntry(entry, idx) {
   const prevSets = prevSession?.entries.find(e => e.exerciseId === ex.id)?.sets ?? [];
 
   const type = exerciseType(ex);
+  normalizeEntrySets(entry, type);
   const div = type === "cardio"
     ? renderCardioEntry(entry, idx, ex, prevSets, w)
     : renderSetEntry(entry, idx, ex, prevSets, w, type);
@@ -913,13 +930,13 @@ function renderEntry(entry, idx) {
 // Column layout per set-based type. Cardio has its own renderer.
 const SET_COLUMNS = {
   strength:   () => [{ key: "load", label: state.settings.units, step: "0.5", mode: "decimal" }, { key: "reps", label: "Reps", step: "1", mode: "numeric" }],
-  bodyweight: () => [{ key: "reps", label: "Reps", step: "1", mode: "numeric" }],
+  bodyweight: () => [{ key: "reps", label: "Reps", step: "1", mode: "numeric" }, { key: "load", label: `+${state.settings.units}`, step: "2.5", mode: "decimal", placeholder: "+0" }],
   timed:      () => [{ key: "seconds", label: "Sec", step: "1", mode: "numeric" }],
 };
 function prevLabel(type, s) {
   if (!s || !setHasData(s)) return "—";
   if (type === "strength")   return `${parseNum(s.load)}×${parseNum(s.reps)}`;
-  if (type === "bodyweight") return `${parseNum(s.reps)}`;
+  if (type === "bodyweight") return `${parseNum(s.reps)}${parseNum(s.load) ? `+${parseNum(s.load)}` : ""}`;
   if (type === "timed")      return `${parseNum(s.seconds)}s`;
   return "—";
 }
@@ -933,7 +950,7 @@ function renderSetEntry(entry, idx, ex, prevSets, w, type) {
   const setRows = entry.sets.map((s, si) => `
       <tr>
         <td class="set-num">${si+1}</td>
-        ${cols.map(c => `<td><input class="inp-set" data-key="${c.key}" type="number" inputmode="${c.mode}" step="${c.step}" min="0" value="${s[c.key] ?? ""}" placeholder="${c.label}"></td>`).join("")}
+        ${cols.map(c => `<td><input class="inp-set" data-key="${c.key}" type="number" inputmode="${c.mode}" step="${c.step}" min="0" value="${s[c.key] ?? ""}" placeholder="${c.placeholder || c.label}"></td>`).join("")}
         <td class="col-prev">${prevLabel(type, prevSets[si])}</td>
         <td class="col-actions"><button class="icon-btn danger btn-remove-set" aria-label="Remove set">×</button></td>
       </tr>`).join("");
@@ -953,6 +970,7 @@ function renderSetEntry(entry, idx, ex, prevSets, w, type) {
         <div class="entry-sub">${escapeHtml(sub)}</div>
       </div>
       <div class="entry-actions">
+        <button class="icon-btn btn-edit-exercise" aria-label="Edit exercise" title="Type, sets, rep range">${ICON.edit}</button>
         <button class="icon-btn btn-add-set" aria-label="Add set">+</button>
         <button class="icon-btn danger btn-remove-entry" aria-label="Remove exercise">${ICON.trash}</button>
       </div>
@@ -964,6 +982,7 @@ function renderSetEntry(entry, idx, ex, prevSets, w, type) {
     <div class="entry-footer"><div class="entry-stats">${stats}<span class="stat-delta"></span></div></div>
   `;
 
+  div.querySelector(".btn-edit-exercise").onclick = () => openExerciseEditor(ex.id, renderToday);
   div.querySelector(".btn-add-set").onclick = () => { entry.sets.push(blankSet(type)); saveState(); renderToday(); };
   div.querySelector(".btn-remove-entry").onclick = () => { w.entries.splice(idx, 1); saveState(); renderToday(); };
   div.querySelectorAll(".btn-remove-set").forEach((btn, si) => {
@@ -1012,6 +1031,7 @@ function renderCardioEntry(entry, idx, ex, prevSets, w) {
         <div class="entry-sub">${escapeHtml(prevLabelText)}</div>
       </div>
       <div class="entry-actions">
+        <button class="icon-btn btn-edit-exercise" aria-label="Edit exercise">${ICON.edit}</button>
         <button class="icon-btn btn-add-set" aria-label="Add interval" title="Add interval">+</button>
         <button class="icon-btn danger btn-remove-entry" aria-label="Remove exercise">${ICON.trash}</button>
       </div>
@@ -1026,6 +1046,7 @@ function renderCardioEntry(entry, idx, ex, prevSets, w) {
     </div>
   `;
 
+  div.querySelector(".btn-edit-exercise").onclick = () => openExerciseEditor(ex.id, renderToday);
   div.querySelector(".btn-add-set").onclick = () => { entry.sets.push(blankSet("cardio")); saveState(); renderToday(); };
   div.querySelector(".btn-remove-entry").onclick = () => { w.entries.splice(idx, 1); saveState(); renderToday(); };
   div.querySelectorAll(".btn-remove-set").forEach((btn, si) => {
@@ -1079,7 +1100,8 @@ function updateEntryStats(div, entry, prevSets, type = "strength") {
   if (type === "bodyweight") {
     const cur = entry.sets.reduce((a, s) => a + parseNum(s.reps), 0);
     const prev = prevSets.reduce((a, s) => a + parseNum(s.reps), 0);
-    div.querySelector(".stat-total").textContent = fmt(cur);
+    const topAdded = Math.max(0, ...entry.sets.map(s => parseNum(s.load)));
+    div.querySelector(".stat-total").textContent = fmt(cur) + (topAdded ? ` · +${topAdded} ${state.settings.units}` : "");
     showDelta(cur, prev, " reps"); return;
   }
   if (type === "timed") {
@@ -1109,7 +1131,6 @@ function openPicker(onPick) {
   const modal = $("#picker-modal");
   const list = $("#picker-list");
   const search = $("#picker-search");
-  const createBtn = $("#btn-picker-create");
   search.value = "";
 
   function renderList() {
@@ -1127,22 +1148,26 @@ function openPicker(onPick) {
     list.querySelectorAll(".picker-item").forEach(el => {
       el.onclick = () => { onPick(el.dataset.id); closePicker(); };
     });
-    // Show "create" button if no exact match
+    // Offer to create when there's no exact match — with a type choice
     const exact = state.exercises.some(e => e.name.toLowerCase() === q);
+    const createRow = $("#picker-create-row");
     if (q && !exact) {
-      createBtn.classList.remove("hidden");
+      createRow.classList.remove("hidden");
       $("#picker-create-name").textContent = search.value.trim();
     } else {
-      createBtn.classList.add("hidden");
+      createRow.classList.add("hidden");
     }
   }
-  createBtn.onclick = () => {
-    const ex = { id: uid(), name: search.value.trim(), defaultSets: 3, defaultRepRange: "", days: [] };
-    state.exercises.push(ex);
-    saveState();
-    onPick(ex.id);
-    closePicker();
-  };
+  $$("#picker-create-row .type-choice").forEach(btn => {
+    btn.onclick = () => {
+      const type = btn.dataset.type;
+      const ex = { id: uid(), name: search.value.trim(), type, defaultSets: type === "cardio" ? 1 : 3, defaultRepRange: "", days: [], updatedAt: Date.now() };
+      state.exercises.push(ex);
+      saveState();
+      onPick(ex.id);
+      closePicker();
+    };
+  });
   search.oninput = renderList;
   renderList();
   modal.classList.remove("hidden");
@@ -1168,7 +1193,7 @@ function setsSummary(type, sets) {
       return bits.join(" · ");
     }
     case "timed":      return logged.map(s => `${parseNum(s.seconds)}s`).join("  ·  ");
-    case "bodyweight": return logged.map(s => `${parseNum(s.reps)}`).join("  ·  ") + " reps";
+    case "bodyweight": return logged.map(s => `${parseNum(s.reps)}${parseNum(s.load) ? `+${parseNum(s.load)}` : ""}`).join("  ·  ") + " reps";
     default:           return logged.map(s => `${parseNum(s.load)}×${parseNum(s.reps)}`).join("  ·  ");
   }
 }
@@ -1402,7 +1427,10 @@ function prLabel(p) {
   switch (p.kind) {
     case "e1rm": return `e1RM PR ${Math.round(p.value)} ${u}`;
     case "load": return `heaviest ${p.value} ${u}`;
-    case "reps": return `rep PR ${p.value}×${p.load} ${u}`;
+    case "reps":
+      if (p.total) return `${p.value} total reps PR`;
+      if (p.bw) return p.load ? `rep PR ${p.value} × +${p.load} ${u}` : `rep PR ${p.value} (bodyweight)`;
+      return `rep PR ${p.value}×${p.load} ${u}`;
     case "volume": return `volume PR ${fmt(p.value)}`;
     case "seconds": return `${p.value}s PR`;
     case "distance": return `${p.value.toFixed(1)} mi PR`;
@@ -1668,7 +1696,7 @@ function renderLibrary() {
   });
 }
 
-function openExerciseEditor(id) {
+function openExerciseEditor(id, afterSave) {
   const modal = $("#exercise-edit-modal");
   const title = $("#exercise-edit-title");
   const nameInp = $("#exercise-edit-name");
@@ -1693,7 +1721,16 @@ function openExerciseEditor(id) {
     const name = nameInp.value.trim();
     if (!name) { toast("Name is required"); return; }
     ex.name = name;
-    ex.type = EXERCISE_TYPES[typeInp.value] ? typeInp.value : "strength";
+    const newType = EXERCISE_TYPES[typeInp.value] ? typeInp.value : "strength";
+    const oldType = exerciseType(ex);
+    if (!isNew && oldType === "strength" && newType === "bodyweight") {
+      // Logged weights were probably body weight on a machine, not added load — offer to clear them.
+      const affected = state.workouts.filter(w => w.entries.some(e => e.exerciseId === ex.id && e.sets.some(s => parseNum(s.load) > 0)));
+      if (affected.length && !confirm(`${affected.length} past session${affected.length > 1 ? "s" : ""} logged a weight for ${ex.name}.\n\nOK = keep those numbers as ADDED weight (belt/vest).\nCancel = clear them (they were body weight / machine weight).`)) {
+        affected.forEach(w => { w.entries.forEach(e => { if (e.exerciseId === ex.id) e.sets.forEach(s => { s.load = ""; }); }); w.updatedAt = Date.now(); });
+      }
+    }
+    ex.type = newType;
     ex.defaultSets = parseInt(setsInp.value) || 3;
     ex.defaultRepRange = repInp.value.trim();
     ex.days = daysInp.value.split(",").map(d => d.trim()).filter(Boolean);
@@ -1709,7 +1746,7 @@ function openExerciseEditor(id) {
     });
     saveState();
     modal.classList.add("hidden");
-    renderLibrary();
+    if (typeof afterSave === "function") afterSave(ex); else renderLibrary();
     toast(isNew ? "Added" : "Saved");
   };
   delBtn.onclick = () => {

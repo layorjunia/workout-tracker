@@ -40,8 +40,15 @@ const Analytics = (() => {
       }
       Object.assign(s, { e1rm: best, topLoad, repsAtTop, volume: vol, reps });
     } else if (type === "bodyweight") {
+      // Added weight (belt/vest) is optional; "top set" = heaviest added load, then most reps
+      let topLoad = 0, repsAtTop = 0;
+      for (const st of sets) {
+        const L = parseNum(st.load), R = parseNum(st.reps);
+        if (L > topLoad || (L === topLoad && R > repsAtTop)) { topLoad = L; repsAtTop = R; }
+      }
       s.reps = sets.reduce((a, st) => a + parseNum(st.reps), 0);
       s.bestSet = Math.max(0, ...sets.map(st => parseNum(st.reps)));
+      s.topLoad = topLoad; s.repsAtTop = repsAtTop;
     } else if (type === "timed") {
       s.seconds = sets.reduce((a, st) => a + parseNum(st.seconds), 0);
       s.bestSet = Math.max(0, ...sets.map(st => parseNum(st.seconds)));
@@ -76,7 +83,11 @@ const Analytics = (() => {
         status = "up"; notes.push(`volume +${Math.round((now.volume / prev.volume - 1) * 100)}%`);
       }
     } else if (now.type === "bodyweight") {
-      if (now.reps > prev.reps) { status = "up"; notes.push(`+${now.reps - prev.reps} reps`); }
+      const u = state.settings.units;
+      if (now.topLoad > (prev.topLoad || 0)) { status = "up"; notes.push(`+${now.topLoad - (prev.topLoad || 0)} ${u} added`); }
+      else if (now.topLoad === (prev.topLoad || 0) && now.repsAtTop > (prev.repsAtTop || 0) && now.topLoad > 0) { status = "up"; notes.push(`+${now.repsAtTop - prev.repsAtTop} reps at +${now.topLoad}`); }
+      else if (now.topLoad < (prev.topLoad || 0) && now.reps <= prev.reps) { status = "down"; notes.push(`−${(prev.topLoad || 0) - now.topLoad} ${u} added`); }
+      else if (now.reps > prev.reps) { status = "up"; notes.push(`+${now.reps - prev.reps} reps`); }
       else if (now.reps < prev.reps * 0.9) { status = "down"; notes.push(`${now.reps - prev.reps} reps`); }
     } else if (now.type === "timed") {
       if (now.seconds > prev.seconds) { status = "up"; notes.push(`+${now.seconds - prev.seconds}s`); }
@@ -131,10 +142,22 @@ const Analytics = (() => {
           }
           r.volume = Math.max(r.volume, now.volume);
           recs.set(now.exerciseId, r);
-        } else if (now.type === "bodyweight" || now.type === "timed") {
-          const key = now.type === "bodyweight" ? "reps" : "seconds";
-          if (seen > 0 && now[key] > (r.best || 0)) newPRs.push({ kind: key, value: now[key], prevValue: r.best || 0 });
-          r.best = Math.max(r.best || 0, now[key]); recs.set(now.exerciseId, r);
+        } else if (now.type === "bodyweight") {
+          // Rep PR = most reps in a set at a given added load; load PR = heaviest added weight
+          const prevRepsAt = r.repsAt.get(now.topLoad) || 0;
+          if (seen > 0 && now.topLoad > 0 && now.topLoad > r.load) newPRs.push({ kind: "load", value: now.topLoad, prevValue: r.load });
+          if (seen > 0 && prevRepsAt > 0 && now.repsAtTop > prevRepsAt) newPRs.push({ kind: "reps", value: now.repsAtTop, prevValue: prevRepsAt, load: now.topLoad, bw: true });
+          if (seen > 0 && now.topLoad === 0 && now.reps > (r.best || 0) && (r.best || 0) > 0) newPRs.push({ kind: "reps", value: now.reps, prevValue: r.best, total: true, bw: true });
+          r.load = Math.max(r.load, now.topLoad);
+          for (const st of (entry.sets || []).filter(setHasData)) {
+            const L = parseNum(st.load), R = parseNum(st.reps);
+            if (R > (r.repsAt.get(L) || 0)) r.repsAt.set(L, R);
+          }
+          if (now.topLoad === 0) r.best = Math.max(r.best || 0, now.reps);
+          recs.set(now.exerciseId, r);
+        } else if (now.type === "timed") {
+          if (seen > 0 && now.seconds > (r.best || 0)) newPRs.push({ kind: "seconds", value: now.seconds, prevValue: r.best || 0 });
+          r.best = Math.max(r.best || 0, now.seconds); recs.set(now.exerciseId, r);
         } else if (now.type === "cardio") {
           if (seen > 0 && now.distance > (r.distance || 0) && now.distance > 0) newPRs.push({ kind: "distance", value: now.distance, prevValue: r.distance || 0 });
           if (seen > 0 && now.pace && r.pace && now.pace < r.pace) newPRs.push({ kind: "pace", value: now.pace, prevValue: r.pace });
