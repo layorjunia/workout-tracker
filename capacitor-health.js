@@ -18,8 +18,10 @@
   const READ_TYPES = [
     "restingHeartRate", "heartRateVariability", "oxygenSaturation",
     "sleep", "steps", "calories", "weight", "bodyFat",
+    "heartRate", "workouts",          // per-workout enrichment
   ];
-  const AUTH_KEY = "workout-tracker:healthKitAuthed";
+  // Keyed by the type list so adding a type re-prompts users who authorised before.
+  const AUTH_KEY = "workout-tracker:healthKitAuthed:" + READ_TYPES.join(",");
   const SYNC_INTERVAL_MS = 30 * 60 * 1000;
   let syncTimer = null;
   let syncing = false;
@@ -39,10 +41,10 @@
   const now = () => Date.now();
   const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString(); };
 
-  async function read(dataType, startDate, limit) {
+  async function read(dataType, startDate, limit, endDate) {
     const h = health();
     try {
-      const { samples } = await h.readSamples({ dataType, startDate, endDate: iso(now()), limit });
+      const { samples } = await h.readSamples({ dataType, startDate, endDate: endDate || iso(now()), limit });
       return samples || [];
     } catch (e) {
       console.warn(`[health] read ${dataType} failed:`, e?.message || e);
@@ -103,6 +105,84 @@
     return out;
   }
 
+  // ── Per-workout enrichment ──────────────────────────────────────────────
+  // Given a logged workout's local date + HH:MM start/end, read what the Watch
+  // recorded in that window: heart-rate samples (avg/max/min), active calories,
+  // and the best-overlapping HealthKit workout session if one exists.
+  function localDateTime(dateISO, hhmm) {
+    const [y, m, d] = dateISO.split("-").map(Number);
+    const [hh, mm] = (hhmm || "00:00").split(":").map(Number);
+    return new Date(y, m - 1, d, hh, mm, 0, 0);
+  }
+  async function enrichWorkout({ date, startTime, endTime }) {
+    await ensureAuthorized();
+    const h = health();
+    if (!h || !date || !startTime || !endTime) return null;
+    let start = localDateTime(date, startTime), end = localDateTime(date, endTime);
+    if (end <= start) end = new Date(end.getTime() + 24 * 3600 * 1000); // crossed midnight
+    const startISO = start.toISOString(), endISO = end.toISOString();
+
+    const [hrSamples, kcalSamples, workoutsRes] = await Promise.all([
+      read("heartRate", startISO, 5000, endISO),
+      read("calories", startISO, 10000, endISO),
+      h.queryWorkouts({
+        startDate: new Date(start.getTime() - 15 * 60000).toISOString(),
+        endDate: new Date(end.getTime() + 15 * 60000).toISOString(),
+        limit: 20,
+      }).catch(() => ({ workouts: [] })),
+    ]);
+
+    const out = { pulledAt: Date.now(), windowStart: startISO, windowEnd: endISO };
+    const hr = hrSamples.map(s => Number(s.value)).filter(v => Number.isFinite(v) && v > 0);
+    if (hr.length) {
+      out.avgHR = Math.round(hr.reduce((a, b) => a + b, 0) / hr.length);
+      out.maxHR = Math.round(Math.max(...hr));
+      out.minHR = Math.round(Math.min(...hr));
+      out.hrSamples = hr.length;
+    }
+    const kcal = kcalSamples.reduce((a, s) => a + (Number(s.value) || 0), 0);
+    if (kcal > 0) out.activeKcal = Math.round(kcal);
+
+    // Best-overlap Watch workout session, if the user also started one on the wrist
+    let best = null, bestOverlap = 0;
+    for (const w of (workoutsRes?.workouts || [])) {
+      const ws = Date.parse(w.startDate), we = Date.parse(w.endDate);
+      const ov = Math.min(we, end.getTime()) - Math.max(ws, start.getTime());
+      if (ov > bestOverlap) { bestOverlap = ov; best = w; }
+    }
+    if (best && bestOverlap > 5 * 60000) {
+      const hk = { type: best.workoutType, start: best.startDate, end: best.endDate, durationMin: Math.round((best.duration || 0) / 60) };
+      if (best.totalEnergyBurned != null) hk.kcal = Math.round(best.totalEnergyBurned);
+      if (best.totalDistance != null) hk.distanceMi = Math.round(best.totalDistance / 1609.344 * 100) / 100;
+      if (best.sourceName) hk.source = best.sourceName;
+      out.hkWorkout = hk;   // never carries undefined — Firestore rejects it
+      // Prefer the Watch session's own calorie total when we have it
+      if (out.hkWorkout.kcal) out.activeKcal = out.hkWorkout.kcal;
+    }
+    const hasAnything = out.avgHR || out.activeKcal || out.hkWorkout;
+    return hasAnything ? out : null;
+  }
+
+  // ── Nutrition (MyFitnessPal / Cronometer → Apple Health → here) ─────────
+  // Backed by the in-app NutritionPlugin (ios/App/App/NutritionPlugin.swift),
+  // which sums dietary energy / protein / carbs / fat per day.
+  const NUT_AUTH_KEY = "workout-tracker:nutritionAuthed";
+  const nutrition = () => window.Capacitor?.Plugins?.Nutrition || null;
+  async function syncNutrition(days = 14) {
+    const n = nutrition();
+    if (!n) throw new Error("Nutrition plugin not available");
+    if (localStorage.getItem(NUT_AUTH_KEY) !== "1") {
+      await n.requestAuthorization();
+      localStorage.setItem(NUT_AUTH_KEY, "1");
+    }
+    const end = new Date();
+    const start = new Date(); start.setDate(start.getDate() - days); start.setHours(0, 0, 0, 0);
+    const res = await n.dailyTotals({ startDate: start.toISOString(), endDate: end.toISOString() });
+    const map = res?.days || {};
+    window.__applyNativeNutrition?.(map);
+    return Object.keys(map).length;
+  }
+
   async function syncNow() {
     if (syncing) return;
     syncing = true;
@@ -111,10 +191,14 @@
       const metrics = await collectMetrics();
       if (Object.keys(metrics).length === 0) {
         console.log("[health] no samples returned (permissions denied, or no Watch data yet)");
-        return;
+      } else {
+        window.__applyNativeHealth?.(metrics);
+        console.log("[health] applied", Object.keys(metrics).join(", "));
       }
-      window.__applyNativeHealth?.(metrics);
-      console.log("[health] applied", Object.keys(metrics).join(", "));
+      // Nutrition rides along once the user has connected it (no prompt otherwise)
+      if (localStorage.getItem(NUT_AUTH_KEY) === "1") {
+        await syncNutrition(7).catch(e => console.warn("[nutrition] sync failed:", e?.message || e));
+      }
     } finally {
       syncing = false;
     }
@@ -129,7 +213,7 @@
     if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
   }
 
-  window.WorkoutNativeHealth = { isNative: true, syncNow, start, stop };
+  window.WorkoutNativeHealth = { isNative: true, syncNow, start, stop, enrichWorkout, syncNutrition };
 
   // Re-sync when the app returns to the foreground (after permission granted once).
   document.addEventListener("visibilitychange", () => {

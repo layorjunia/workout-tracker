@@ -2,13 +2,16 @@
 // (useful inside gyms with bad signal). Also flips iOS into "PWA" mode when
 // added to the home screen, which protects localStorage from the 7-day purge.
 
-const VERSION = "v18";
+const VERSION = "v20";
 const CACHE = `workout-tracker-${VERSION}`;
 const SHELL = [
   "./",
   "./index.html",
   `./styles.css?v=${VERSION.slice(1)}`,
   `./app.js?v=${VERSION.slice(1)}`,
+  `./capacitor-health.js?v=${VERSION.slice(1)}`,
+  `./vendor/chart.umd.js?v=${VERSION.slice(1)}`,
+  `./vendor/firebase-sync.bundle.js?v=${VERSION.slice(1)}`,
   "./manifest.json",
   "./icon-192.png",
   "./icon-512.png",

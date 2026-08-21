@@ -15,12 +15,18 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <title>Workout Tracker</title>
-<link rel="stylesheet" href="styles.css?v=18">
+<link rel="stylesheet" href="styles.css?v=20">
 </head>
 <body>
 
 <!-- Toast -->
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<!-- Offline banner (hidden when online) -->
+<div id="net-banner" class="net-banner hidden" role="status">
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4 4 0 0 1-.6-7.95A6 6 0 0 1 17.4 8.5M20 15.5A3.5 3.5 0 0 0 17 12"/><path d="M3 3l18 18"/></svg>
+  <span>Offline — everything saves on this phone and syncs when you're back in signal.</span>
+</div>
 
 <!-- iOS install banner: only shown to Safari users who haven't added to home screen -->
 <div id="install-banner" class="install-banner hidden">
@@ -47,48 +53,44 @@
         <div class="active-label" id="active-workout-label">Workout</div>
         <div class="saved-indicator" id="saved-indicator">Not saved yet</div>
       </div>
-      <div class="row">
-        <label class="col">
+      <div class="meta-grid">
+        <label>
           <span class="label">Date</span>
           <input type="date" id="workout-date">
         </label>
-        <label class="col">
+        <div>
+          <span class="label">Duration</span>
+          <div id="workout-duration" class="duration-display">—</div>
+        </div>
+        <label>
           <span class="label">Started</span>
           <input type="time" id="workout-start">
         </label>
-        <label class="col">
+        <label>
           <span class="label">Ended</span>
           <input type="time" id="workout-end">
         </label>
       </div>
-      <div class="row" style="margin-top: 8px; align-items: center;">
-        <div class="col">
-          <span class="label">Duration</span>
-          <div id="workout-duration" class="duration-display">—</div>
-        </div>
-        <button class="btn btn-secondary" id="btn-end-now" style="flex:0 0 auto; align-self: flex-end;">End now</button>
-      </div>
-      <label style="margin-top:10px">
-        <span class="label">Notes</span>
-        <input type="text" id="workout-notes" placeholder="energy, sleep, anything to remember">
-      </label>
+      <input type="text" id="workout-notes" class="meta-notes" placeholder="Workout notes" autocapitalize="sentences">
     </div>
 
     <div id="entries"></div>
 
-    <div class="row actions">
+    <div class="workout-actions">
       <button class="btn btn-secondary" id="btn-add-exercise">+ Exercise</button>
-      <button class="btn btn-primary" id="btn-save-workout">Save workout</button>
+      <button class="btn btn-primary" id="btn-save-workout">Finish workout</button>
     </div>
     <div class="row actions">
-      <button class="btn btn-ghost danger" id="btn-discard-workout">Discard</button>
+      <button class="btn btn-ghost danger" id="btn-discard-workout">Discard workout</button>
     </div>
   </div>
 
   <div id="no-workout" class="container empty">
-    <div class="empty-icon">▶</div>
-    <h2>No workout in progress</h2>
-    <p>Tap <strong>New</strong> to start logging today's session.</p>
+    <div class="empty-art">
+      <svg viewBox="0 0 120 60" width="140" height="70" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"><rect x="8" y="14" width="10" height="32" rx="3"/><rect x="22" y="8" width="10" height="44" rx="3"/><rect x="88" y="8" width="10" height="44" rx="3"/><rect x="102" y="14" width="10" height="32" rx="3"/><path d="M32 30h56"/></svg>
+    </div>
+    <h2>Ready when you are</h2>
+    <p>Start a session from a template or build one as you go. Everything saves on this phone as you type.</p>
     <button class="btn btn-primary btn-large" id="btn-new-workout-empty">Start workout</button>
   </div>
 </section>
@@ -187,7 +189,35 @@
         <span class="label">Notes</span>
         <input type="text" id="m-notes" placeholder="meals, hunger, anything to remember">
       </label>
-      <div class="macro-total"><span class="label">Total intake</span> <strong id="macro-total">0 kcal</strong></div>
+      <div class="macro-total"><span class="label">Total intake <em id="macro-source" class="macro-source"></em></span> <strong id="macro-total">0 kcal</strong></div>
+      <div class="goals">
+        <div class="goal" id="goal-protein">
+          <div class="goal-head"><span>Protein</span><span class="goal-val">—</span></div>
+          <div class="goal-track"><div class="goal-fill"></div></div>
+        </div>
+        <div class="goal" id="goal-cal">
+          <div class="goal-head"><span>Calories</span><span class="goal-val">—</span></div>
+          <div class="goal-track"><div class="goal-fill"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Food logging apps</h3>
+      <div class="native-only">
+        <p class="muted small">MyFitnessPal and Cronometer (free tiers) both write what you log to Apple Health. Turn that on once and your calories and macros appear here automatically — no extra account.</p>
+        <details class="setup">
+          <summary>MyFitnessPal setup</summary>
+          <ol class="setup-list"><li>MyFitnessPal → <strong>More</strong> (bottom-right) → <strong>Apps &amp; Devices</strong> → <strong>Apple Health</strong></li><li>Turn on <strong>Nutrition</strong> (and Weight if you log it there)</li><li>Back here, tap <strong>Sync nutrition</strong></li></ol>
+        </details>
+        <details class="setup">
+          <summary>Cronometer setup</summary>
+          <ol class="setup-list"><li>Cronometer → <strong>Settings</strong> → <strong>Integrations</strong> → <strong>Apple Health</strong></li><li>Enable <strong>Export</strong> for Energy, Protein, Carbs, Fat</li><li>Back here, tap <strong>Sync nutrition</strong></li></ol>
+        </details>
+        <button class="btn btn-secondary" id="btn-nutrition-sync" style="width:100%;margin-top:10px">Sync nutrition from Apple Health</button>
+        <div class="muted small" id="nutrition-sync-status" style="margin-top:8px">Not synced yet</div>
+      </div>
+      <p class="muted small web-only">Install the iOS app to pull calories and macros from MyFitnessPal or Cronometer via Apple Health. On the web you can type them above.</p>
     </div>
 
     <div class="card">
@@ -265,6 +295,16 @@
             <option value="male">Male</option>
             <option value="female">Female</option>
           </select>
+        </label>
+      </div>
+      <div class="row">
+        <label class="col">
+          <span class="label">Protein goal (g)</span>
+          <input type="number" id="p-goal-protein" inputmode="numeric" min="0" step="5">
+        </label>
+        <label class="col">
+          <span class="label">Calorie goal</span>
+          <input type="number" id="p-goal-cal" inputmode="numeric" min="0" step="50">
         </label>
       </div>
       <label>
@@ -456,8 +496,10 @@
     <label>
       <span class="label">Type</span>
       <select id="exercise-edit-type">
-        <option value="strength">Strength — sets / reps / weight</option>
-        <option value="cardio">Cardio — duration / distance / HR</option>
+        <option value="strength">Strength — weight × reps</option>
+        <option value="bodyweight">Bodyweight — reps only</option>
+        <option value="timed">Timed — seconds per set (planks, hangs)</option>
+        <option value="cardio">Cardio — minutes · miles · heart rate</option>
       </select>
     </label>
     <label>
@@ -481,16 +523,31 @@
 
 <!-- Bottom navigation ============================================== -->
 <nav class="bottom-nav">
-  <button class="nav-btn active" data-view="today"><span class="nav-icon">▣</span><span>Today</span></button>
-  <button class="nav-btn" data-view="history"><span class="nav-icon">≡</span><span>History</span></button>
-  <button class="nav-btn" data-view="progress"><span class="nav-icon">◢</span><span>Progress</span></button>
-  <button class="nav-btn" data-view="health"><span class="nav-icon">♥</span><span>Health</span></button>
-  <button class="nav-btn" data-view="settings"><span class="nav-icon">⚙</span><span>Settings</span></button>
+  <button class="nav-btn active" data-view="today" aria-label="Today">
+    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 7.5v9M17.5 7.5v9M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/></svg>
+    <span>Today</span>
+  </button>
+  <button class="nav-btn" data-view="history" aria-label="History">
+    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+    <span>History</span>
+  </button>
+  <button class="nav-btn" data-view="progress" aria-label="Progress">
+    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5M4 19h16"/><path d="M7 15l4-5 3 3 5-7"/></svg>
+    <span>Progress</span>
+  </button>
+  <button class="nav-btn" data-view="health" aria-label="Health">
+    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7.5-4.8-9.5-9.2A5 5 0 0 1 12 6.5a5 5 0 0 1 9.5 4.3C19.5 15.2 12 20 12 20Z"/><path d="M4 12h4l2-3 2 5 2-3h6"/></svg>
+    <span>Health</span>
+  </button>
+  <button class="nav-btn" data-view="settings" aria-label="Settings">
+    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+    <span>Settings</span>
+  </button>
 </nav>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="app.js?v=18"></script>
-<script type="module" src="firebase-sync.js?v=18"></script>
-<script src="capacitor-health.js?v=18"></script>
+<script src="vendor/chart.umd.js?v=20"></script>
+<script src="app.js?v=20"></script>
+<script type="module" src="vendor/firebase-sync.bundle.js?v=20"></script>
+<script src="capacitor-health.js?v=20"></script>
 </body>
 </html>

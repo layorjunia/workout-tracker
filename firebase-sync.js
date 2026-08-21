@@ -1,28 +1,34 @@
-// Firebase cloud sync — module. Exposes globals on window.WorkoutSync so app.js
-// (loaded as a regular script) can call in.
+// Firebase cloud sync — ES module SOURCE. Bundled by esbuild into
+// vendor/firebase-sync.bundle.js (see `npm run build:vendor`) so the app has no
+// runtime dependency on a CDN and works fully offline. Exposes window.WorkoutSync
+// for app.js (a plain script).
 //
-// Storage model: one document per user at /users/{uid}, containing:
-//   { state: <full app state JSON>, updatedAt: serverTimestamp, deviceId }
+// Storage model: one document per user at /users/{uid}:
+//   { state: <full app state>, updatedAt: serverTimestamp, deviceId, clientTime }
 //
 // Sync policy:
-//   • On sign-in: fetch cloud doc. If newer than local, replace state.
-//   • On any local saveState(): debounced (2s) push to cloud.
-//   • Realtime onSnapshot listens for writes from OTHER devices.
-//     Own writes are filtered by comparing deviceId.
-//
-// If the user isn't signed in, everything falls back to localStorage — the app
-// continues to work fully offline.
+//   • Local-first. localStorage is always written first (app.js); the cloud push
+//     is debounced 2s behind it. Firestore's persistent cache queues writes made
+//     while offline and flushes them on reconnect — even across app relaunches.
+//   • Auth state is persisted, so an offline launch still comes up signed in.
+//   • Every inbound cloud state (sign-in pull, live snapshot from another device,
+//     reconnect catch-up) goes through app.js's merge (window.__onCloudMerge /
+//     __onCloudUpdated) — never a blind replace — so offline edits on this
+//     device and edits made elsewhere both survive.
+//   • Own writes echo back through onSnapshot; they're filtered by deviceId.
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.0/firebase-app.js";
+import { initializeApp } from "firebase/app";
 import {
   getAuth, signOut, onAuthStateChanged,
   signInWithEmailAndPassword, createUserWithEmailAndPassword,
   GoogleAuthProvider, signInWithPopup,
-} from "https://www.gstatic.com/firebasejs/10.14.0/firebase-auth.js";
+  browserLocalPersistence, setPersistence,
+} from "firebase/auth";
 import {
-  getFirestore, doc, setDoc, getDoc, onSnapshot, serverTimestamp,
-  enableIndexedDbPersistence,
-} from "https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js";
+  initializeFirestore, persistentLocalCache, persistentSingleTabManager,
+  doc, setDoc, getDoc, getDocFromServer, onSnapshot, serverTimestamp,
+  waitForPendingWrites, enableNetwork,
+} from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCgy28dqL2agj0_ns92a9GagW-nipVhxsQ",
@@ -35,10 +41,22 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
-enableIndexedDbPersistence(db).catch(() => { /* multi-tab or unsupported */ });
+setPersistence(auth, browserLocalPersistence).catch(() => {});
 
-// Stable device ID persisted so we can filter our own snapshots.
+// Persistent local cache: queued writes + cached reads survive offline periods
+// and relaunches. Single-tab manager is fine (native app / one PWA tab).
+let db;
+try {
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }),
+    ignoreUndefinedProperties: true,
+  });
+} catch (e) {
+  console.warn("[sync] persistent cache unavailable, using memory cache:", e?.message || e);
+  db = initializeFirestore(app, { ignoreUndefinedProperties: true });
+}
+
+// Stable device ID so we can recognise our own echoes.
 const DEVICE_ID_KEY = "workout-tracker:deviceId";
 function getDeviceId() {
   let id = localStorage.getItem(DEVICE_ID_KEY);
@@ -54,56 +72,92 @@ let currentUser = null;
 let unsubscribeSnapshot = null;
 let pushTimer = null;
 let lastPushAt = 0;
+let pendingPush = false;       // a push is queued or in flight
+let online = typeof navigator === "undefined" ? true : navigator.onLine !== false;
 const PUSH_DEBOUNCE_MS = 2000;
 
-// Called by app.js after every saveState() to schedule a cloud upload.
+function userDoc() { return doc(db, "users", currentUser.uid); }
+
+function notifyStatus() {
+  window.__onSyncStatus?.({ online, pendingPush, lastPushAt, signedIn: !!currentUser });
+}
+
+// ───────── Push ─────────
 function scheduleCloudPush() {
   if (!currentUser) return;
+  pendingPush = true;
+  notifyStatus();
   if (pushTimer) clearTimeout(pushTimer);
-  pushTimer = setTimeout(() => {
-    pushTimer = null;
-    doCloudPush();
-  }, PUSH_DEBOUNCE_MS);
+  pushTimer = setTimeout(() => { pushTimer = null; doCloudPush(); }, PUSH_DEBOUNCE_MS);
 }
 
 async function doCloudPush() {
   if (!currentUser) return;
   const state = window.__getState?.();
   if (!state) return;
+  const payload = { state, updatedAt: serverTimestamp(), deviceId, clientTime: Date.now() };
   try {
-    await setDoc(doc(db, "users", currentUser.uid), {
-      state,
-      updatedAt: serverTimestamp(),
-      deviceId,
-      clientTime: Date.now(),
-    });
-    lastPushAt = Date.now();
-    window.__onCloudPushed?.();
+    // setDoc resolves when the write is in the local persistent queue if we're
+    // offline, and when the server acks if we're online. Either way the data
+    // is safe; we report "synced" only once the server has it.
+    const p = setDoc(userDoc(), payload);
+    if (online) {
+      await p;
+      lastPushAt = Date.now();
+      pendingPush = false;
+      window.__onCloudPushed?.();
+    } else {
+      p.catch(() => {});
+      // Stays pendingPush=true until the reconnect flush confirms.
+    }
   } catch (e) {
-    console.error("Cloud push failed:", e);
+    console.error("[sync] push failed:", e);
     window.__onCloudError?.(e.message || String(e));
+  }
+  notifyStatus();
+}
+
+// After a reconnect: wait for Firestore to flush queued writes, then confirm.
+async function flushAfterReconnect() {
+  if (!currentUser) return;
+  try {
+    await enableNetwork(db).catch(() => {});
+    await waitForPendingWrites(db);
+    // Make sure our latest local state is what's on the server (covers the
+    // case where a queued write was lost with a killed app).
+    await doCloudPush();
+    // And pick up anything another device wrote while we were away.
+    const snap = await getDocFromServer(userDoc()).catch(() => null);
+    if (snap?.exists()) {
+      const data = snap.data();
+      if (data.state && data.deviceId !== deviceId) window.__onCloudUpdated?.(data.state);
+    }
+  } catch (e) {
+    console.warn("[sync] reconnect flush:", e?.message || e);
   }
 }
 
+// ───────── Pull / subscribe ─────────
 async function pullFromCloud() {
   if (!currentUser) return null;
-  const snap = await getDoc(doc(db, "users", currentUser.uid));
-  if (!snap.exists()) return null;
+  // Try the server; fall back to the local cache when offline.
+  let snap;
+  try { snap = await getDocFromServer(userDoc()); }
+  catch { snap = await getDoc(userDoc()).catch(() => null); }
+  if (!snap || !snap.exists()) return null;
   return snap.data();
 }
 
 function subscribeSnapshot() {
   if (unsubscribeSnapshot) unsubscribeSnapshot();
   if (!currentUser) return;
-  unsubscribeSnapshot = onSnapshot(doc(db, "users", currentUser.uid), (snap) => {
+  unsubscribeSnapshot = onSnapshot(userDoc(), { includeMetadataChanges: false }, (snap) => {
     if (!snap.exists()) return;
     const data = snap.data();
     if (!data.state) return;
-    // Skip snapshots we produced ourselves
-    if (data.deviceId === deviceId) return;
-    // Skip if it arrived while we still have an unflushed local push
-    if (pushTimer) return;
-    window.__onCloudUpdated?.(data.state);
+    if (data.deviceId === deviceId) return;          // our own echo
+    if (snap.metadata.hasPendingWrites) return;       // local-only, not from the server
+    window.__onCloudUpdated?.(data.state);           // app.js merges, pushes only if changed
   });
 }
 
@@ -112,32 +166,32 @@ onAuthStateChanged(auth, async (user) => {
   window.__onAuthChanged?.(user
     ? { uid: user.uid, email: user.email, name: user.displayName, photoURL: user.photoURL }
     : null);
+  notifyStatus();
   if (!user) {
     if (unsubscribeSnapshot) { unsubscribeSnapshot(); unsubscribeSnapshot = null; }
     return;
   }
-  // Merge on sign-in: pull, decide, then subscribe
   try {
     const remote = await pullFromCloud();
     if (!remote || !remote.state) {
-      // Fresh cloud — seed with local
       window.__onCloudMerge?.({ direction: "push", local: window.__getState?.() });
       await doCloudPush();
     } else {
-      // Cloud has data — replace local
+      // app.js merges remote into local and pushes if the merge changed anything
       window.__onCloudMerge?.({ direction: "pull", remote: remote.state, updatedAt: remote.clientTime });
     }
     subscribeSnapshot();
   } catch (e) {
-    console.error("Sign-in merge failed:", e);
+    console.error("[sync] sign-in merge failed:", e);
     window.__onCloudError?.(e.message || String(e));
   }
 });
 
-// Normalize any user-entered identifier into an email Firebase Auth can accept.
-// Rules:
-//   • already contains "@" → use as-is
-//   • otherwise → strip non-alphanum, lowercase, append @workout-tracker.local
+// ───────── Online / offline ─────────
+window.addEventListener("online", () => { online = true; notifyStatus(); flushAfterReconnect(); });
+window.addEventListener("offline", () => { online = false; notifyStatus(); });
+
+// ───────── Auth helpers ─────────
 function toAuthEmail(identifier) {
   const s = String(identifier || "").trim();
   if (s.includes("@")) return s.toLowerCase();
@@ -146,37 +200,30 @@ function toAuthEmail(identifier) {
   return `${clean}@workout-tracker.local`;
 }
 
-// Fixed suffix appended to the user's 4-digit PIN before sending to Firebase.
-// Firebase Auth requires ≥6-char passwords; the suffix is a symmetric transform
-// applied on both sign-up and sign-in so the user only ever sees 4 digits.
-// (Security is not weakened — brute forcing needs both the identifier and the
-// 10,000-combination PIN, and Firebase rate-limits password attempts.)
+// Firebase requires ≥6-char passwords; the user only ever types 4 digits.
 const PIN_SUFFIX = ".wtapp2026";
 
-// Sign in with identifier (name or email) + 4-digit PIN. Creates the account
-// if it doesn't exist, returns { created: true }.
 async function signInWithPIN(identifier, pin) {
   const email = toAuthEmail(identifier);
   const rawPin = String(pin || "");
   if (!/^\d{4}$/.test(rawPin)) throw new Error("PIN must be exactly 4 digits");
+  if (!online) throw new Error("You're offline — sign in needs a connection (your workouts are still saved locally).");
   const password = rawPin + PIN_SUFFIX;
   try {
     await signInWithEmailAndPassword(auth, email, password);
     return { created: false, email };
   } catch (e) {
     if (e.code === "auth/user-not-found" || e.code === "auth/invalid-credential") {
-      // Might be a wrong PIN OR truly a new user. Try to create.
       try {
         await createUserWithEmailAndPassword(auth, email, password);
         return { created: true, email };
       } catch (e2) {
-        if (e2.code === "auth/email-already-in-use") {
-          throw new Error("Wrong PIN for that name");
-        }
+        if (e2.code === "auth/email-already-in-use") throw new Error("Wrong PIN for that name");
         throw e2;
       }
     }
     if (e.code === "auth/wrong-password") throw new Error("Wrong PIN");
+    if (e.code === "auth/network-request-failed") throw new Error("No connection — try again when you have signal");
     throw e;
   }
 }
@@ -192,17 +239,19 @@ async function signOutOfApp() {
   if (unsubscribeSnapshot) { unsubscribeSnapshot(); unsubscribeSnapshot = null; }
 }
 
-// Public API
 window.WorkoutSync = {
   signInWithPIN,
   signInGoogle,
   signOut: signOutOfApp,
   scheduleCloudPush,
   forcePush: doCloudPush,
+  flushAfterReconnect,
   isReady: true,
+  isOnline: () => online,
+  hasPendingPush: () => pendingPush,
   getLastPushAt: () => lastPushAt,
   getDeviceId: () => deviceId,
 };
 
-// Let app.js know sync is available (in case it loaded first)
 window.__onSyncReady?.();
+notifyStatus();

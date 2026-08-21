@@ -48,8 +48,39 @@ const SEED = {
     {name:"StairMaster",           type:"cardio", defaultSets:1, defaultRepRange:"", days:[]},
     {name:"Incline Walk",          type:"cardio", defaultSets:1, defaultRepRange:"", days:[]},
     {name:"HIIT",                  type:"cardio", defaultSets:1, defaultRepRange:"", days:[]},
+    // Timed holds (seconds per set)
+    {name:"Plank",                 type:"timed", defaultSets:3, defaultRepRange:"45–60s", days:[]},
+    {name:"Side Plank",            type:"timed", defaultSets:3, defaultRepRange:"30–45s", days:[]},
+    {name:"Dead Hang",             type:"timed", defaultSets:3, defaultRepRange:"30–60s", days:[]},
+    {name:"Wall Sit",              type:"timed", defaultSets:3, defaultRepRange:"45–60s", days:[]},
+    // Bodyweight (reps only)
+    {name:"Push-ups",              type:"bodyweight", defaultSets:3, defaultRepRange:"15–25", days:[]},
+    {name:"Sit-ups",               type:"bodyweight", defaultSets:3, defaultRepRange:"15–25", days:[]},
+    {name:"Burpees",               type:"bodyweight", defaultSets:3, defaultRepRange:"10–15", days:[]},
+    {name:"Bodyweight Squats",     type:"bodyweight", defaultSets:3, defaultRepRange:"15–25", days:[]},
+    {name:"Lunges",                type:"bodyweight", defaultSets:3, defaultRepRange:"10–15", days:[]},
   ],
 };
+
+// Exercise types and how their sets are logged.
+const EXERCISE_TYPES = {
+  strength:   { label: "Strength",   hint: "weight × reps" },
+  bodyweight: { label: "Bodyweight", hint: "reps only" },
+  timed:      { label: "Timed",      hint: "seconds per set" },
+  cardio:     { label: "Cardio",     hint: "duration · distance · heart rate" },
+};
+function exerciseType(ex) { return EXERCISE_TYPES[ex?.type] ? ex.type : "strength"; }
+function blankSet(type) {
+  switch (type) {
+    case "cardio":     return { duration: "", distance: "", avgHR: "" };
+    case "timed":      return { seconds: "" };
+    case "bodyweight": return { reps: "" };
+    default:           return { load: "", reps: "" };
+  }
+}
+function setHasData(s) {
+  return Object.values(s || {}).some(v => v !== "" && v != null);
+}
 
 // Default workout templates — copied into state.templates on first launch.
 // User edits live on state.templates; this constant is only the seed.
@@ -141,6 +172,18 @@ const HISTORY = [
   {d:"2025-05-01",day:"Day 5",e:[{n:"Squats Leg Press",s:[[170,12],[190,13],[250,9]]},{n:"Barbell Shrugs",s:[[120,10],[120,10],[120,10]]},{n:"Roman Chair",s:[[0,10],[35,10],[35,10]]},{n:"Leg Curl Machine",s:[[160,10],[160,8],[160,10]]},{n:"Hip Abduction",s:[[250,12],[250,12],[250,10]]},{n:"Ab Oblique Crunch Machine",s:[[10,10],[10,10],[10,10]]}]},
 ];
 
+/* ───────── Icons (inline SVG, currentColor) ───────── */
+const ICON = {
+  trash: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/><path d="M10 11v6M14 11v6"/></svg>`,
+  edit:  `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
+  close: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>`,
+  watch: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="5" width="12" height="14" rx="3"/><path d="M9 2h6M9 22h6M12 9v3l2 1"/></svg>`,
+  heart: `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 21s-7-4.6-9.3-9A5.3 5.3 0 0 1 12 6a5.3 5.3 0 0 1 9.3 6c-2.3 4.4-9.3 9-9.3 9Z"/></svg>`,
+  flame: `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2c1 4 5 5 5 10a5 5 0 0 1-10 0c0-2 1-3 1-3s0 2 2 2c0-3-1-5 2-9Z"/></svg>`,
+  clock: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`,
+  cloudOff: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4 4 0 0 1-.6-7.95A6 6 0 0 1 17.4 8.5M20 15.5A3.5 3.5 0 0 0 17 12"/><path d="M3 3l18 18"/></svg>`,
+};
+
 /* ───────── Helpers ───────── */
 const $ = (sel, root=document) => root.querySelector(sel);
 const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
@@ -215,6 +258,31 @@ function calcTDEE(p) {
 function macrosToKcal(m) {
   return (parseNum(m.protein)) * 4 + (parseNum(m.carbs)) * 4 + (parseNum(m.fat)) * 9;
 }
+// Effective macros for a date: anything you typed wins; otherwise what
+// MyFitnessPal / Cronometer wrote to Apple Health (synced into n.health).
+function effectiveNutrition(n) {
+  const h = (n && n.health) || {};
+  const pick = (k) => (n && n[k] !== "" && n[k] != null) ? parseNum(n[k]) : (h[k] != null ? h[k] : null);
+  const protein = pick("protein"), carbs = pick("carbs"), fat = pick("fat");
+  const manualAny = n && ["protein","carbs","fat"].some(k => n[k] !== "" && n[k] != null);
+  // Calories: Health's logged total is more accurate than 4/4/9 when nothing was typed
+  const kcal = manualAny || h.calories == null
+    ? (protein || 0) * 4 + (carbs || 0) * 4 + (fat || 0) * 9
+    : h.calories;
+  return { protein, carbs, fat, kcal, fromHealth: !manualAny && Object.keys(h).length > 0, hasAny: !!(protein || carbs || fat || kcal) };
+}
+function proteinGoalFor(p) {
+  const g = state.profile?.goals?.protein;
+  if (g) return g;
+  return p?.weight ? Math.round(p.weight * 0.8) : null;   // 0.8 g/lb default
+}
+function calorieGoalFor(p) {
+  const g = state.profile?.goals?.calories;
+  if (g) return g;
+  const t = calcTDEE(p);
+  return t ? Math.round(t) : null;
+}
+
 function getNutritionFor(date) {
   return state.nutrition.find(n => n.date === date) ||
     { date, protein: "", carbs: "", fat: "", notes: "" };
@@ -225,7 +293,7 @@ function upsertNutrition(date, patch) {
     n = { date, protein: "", carbs: "", fat: "", notes: "" };
     state.nutrition.push(n);
   }
-  Object.assign(n, patch);
+  Object.assign(n, patch, { updatedAt: Date.now() });
   saveState();
   return n;
 }
@@ -280,32 +348,129 @@ function loadState() {
   return defaultState();
 }
 let lastSavedAt = null;
+
+// Persist to localStorage and schedule a cloud push. This is the ONLY path
+// that should stamp modification times: local edits bump state.lastModified
+// and the active workout's updatedAt so the merge engine can tell which side
+// of a conflict is newer.
 function saveState() {
   try {
+    const now = Date.now();
+    state.lastModified = now;
+    if (activeWorkoutId) {
+      const w = state.workouts.find(x => x.id === activeWorkoutId);
+      if (w) w.updatedAt = now;
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    lastSavedAt = Date.now();
+    lastSavedAt = now;
     updateSavedIndicator();
-    // Schedule a debounced cloud upload (no-op if not signed in)
-    window.WorkoutSync?.scheduleCloudPush?.();
+    window.WorkoutSync?.scheduleCloudPush?.();   // no-op when signed out
   } catch (e) {
     console.error("saveState failed", e);
     const ind = document.getElementById("saved-indicator");
     if (ind) { ind.textContent = "⚠ Save failed"; ind.className = "saved-indicator failed"; }
   }
 }
+// Persist without claiming a local modification or pushing — used when we've
+// adopted cloud state verbatim, or flushed on background with nothing new.
+function saveStateLocalOnly() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
+}
+
+// Sync status (fed by firebase-sync.js) drives the saved indicator + banner.
+let syncStatus = { online: typeof navigator !== "undefined" ? navigator.onLine !== false : true, pendingPush: false, lastPushAt: 0, signedIn: false };
 function updateSavedIndicator() {
   const ind = document.getElementById("saved-indicator");
-  if (!ind || !lastSavedAt) return;
-  const sec = Math.floor((Date.now() - lastSavedAt) / 1000);
-  ind.className = "saved-indicator";
-  if (sec < 5) ind.textContent = "✓ Saved";
-  else if (sec < 60) ind.textContent = `✓ Saved ${sec}s ago`;
-  else if (sec < 3600) ind.textContent = `✓ Saved ${Math.floor(sec/60)}m ago`;
-  else ind.textContent = `✓ Saved ${Math.floor(sec/3600)}h ago`;
+  if (ind && lastSavedAt) {
+    const sec = Math.floor((Date.now() - lastSavedAt) / 1000);
+    const ago = sec < 5 ? "" : sec < 60 ? ` ${sec}s ago` : sec < 3600 ? ` ${Math.floor(sec/60)}m ago` : ` ${Math.floor(sec/3600)}h ago`;
+    ind.className = "saved-indicator";
+    if (!syncStatus.online) { ind.textContent = `✓ Saved on device${ago} · offline`; ind.classList.add("offline"); }
+    else if (syncStatus.signedIn && syncStatus.pendingPush) { ind.textContent = `✓ Saved${ago} · syncing…`; }
+    else if (syncStatus.signedIn) { ind.textContent = `✓ Saved & synced${ago}`; }
+    else { ind.textContent = `✓ Saved on device${ago}`; }
+  }
+  const banner = document.getElementById("net-banner");
+  if (banner) banner.classList.toggle("hidden", syncStatus.online);
+  if (activeWorkoutId) renderDuration(getWorkout(activeWorkoutId));
 }
 setInterval(updateSavedIndicator, 5000);
+
+/* ───────── Merge engine ─────────
+   Cloud state never blindly replaces local state. Collections merge by id with
+   per-item updatedAt; deletions are carried as tombstones so a deleted workout
+   can't be resurrected by a device that was offline; scalar sections fall back
+   to whichever side saved more recently. Deterministic and idempotent, so two
+   devices converge after one exchange and stop (no ping-pong pushes). */
+function stableStringify(v) {
+  if (v === null || typeof v !== "object") return JSON.stringify(v);
+  if (Array.isArray(v)) return "[" + v.map(stableStringify).join(",") + "]";
+  return "{" + Object.keys(v).sort().map(k => JSON.stringify(k) + ":" + stableStringify(v[k])).join(",") + "}";
+}
+function stateFingerprint(s) {
+  const c = { ...s }; delete c.lastModified; return stableStringify(c);
+}
+function unionById(a = [], b = [], preferA) {
+  const out = new Map();
+  for (const item of b || []) if (item && item.id) out.set(item.id, item);
+  for (const item of a || []) {
+    if (!item || !item.id) continue;
+    const other = out.get(item.id);
+    if (!other) { out.set(item.id, item); continue; }
+    const ta = item.updatedAt || 0, tb = other.updatedAt || 0;
+    out.set(item.id, ta === tb ? (preferA ? item : other) : (ta > tb ? item : other));
+  }
+  return Array.from(out.values());
+}
+function mergeStates(local, remote) {
+  if (!remote) return local;
+  if (!local) return remote;
+  const localNewer = (local.lastModified || 0) >= (remote.lastModified || 0);
+  const newer = localNewer ? local : remote;
+  const out = { ...newer };
+
+  // Tombstones: union, keep the latest deletion time per id
+  const tomb = {};
+  for (const src of [remote.deletedWorkouts || {}, local.deletedWorkouts || {}])
+    for (const [id, ts] of Object.entries(src)) tomb[id] = Math.max(tomb[id] || 0, ts || 0);
+  out.deletedWorkouts = tomb;
+
+  // Workouts: union by id, newer updatedAt wins, drop anything deleted after its last edit
+  out.workouts = unionById(local.workouts, remote.workouts, localNewer)
+    .filter(w => !(tomb[w.id] && tomb[w.id] >= (w.updatedAt || 0)))
+    .sort((a, b) => (a.date + (a.createdAt || 0)).localeCompare(b.date + (b.createdAt || 0)));
+
+  // Exercises are displayed name-sorted, so a canonical order here costs nothing
+  // and makes the merge order-independent. Templates keep their user-defined
+  // order: the remote's sequence first, then anything only local has.
+  out.exercises = unionById(local.exercises, remote.exercises, localNewer)
+    .sort((a, b) => (a.name || "").localeCompare(b.name || "") || String(a.id).localeCompare(String(b.id)));
+  out.templates = unionById(local.templates, remote.templates, localNewer);
+
+  // Nutrition: keyed by date
+  const nut = new Map();
+  for (const src of localNewer ? [remote.nutrition, local.nutrition] : [local.nutrition, remote.nutrition])
+    for (const n of src || []) {
+      const prev = nut.get(n.date);
+      if (!prev || (n.updatedAt || 0) >= (prev.updatedAt || 0)) nut.set(n.date, n);
+    }
+  out.nutrition = Array.from(nut.values()).sort((a, b) => a.date.localeCompare(b.date));
+
+  // Health: latest snapshot wins; daily history unions by date
+  const lh = local.health || {}, rh = remote.health || {};
+  const lt = Date.parse(lh.data?.updatedAt || 0) || 0, rt = Date.parse(rh.data?.updatedAt || 0) || 0;
+  const daily = { ...(rh.daily || {}) };
+  for (const [d, v] of Object.entries(lh.daily || {})) {
+    daily[d] = (v.updatedAt || 0) >= (daily[d]?.updatedAt || 0) ? { ...(daily[d] || {}), ...v } : { ...v, ...daily[d] };
+  }
+  out.health = { ...(lt >= rt ? lh : rh), daily };
+
+  // Everything else (settings, profile, days, flags) comes from `newer` via the spread.
+  out.lastModified = Math.max(local.lastModified || 0, remote.lastModified || 0);
+  return out;
+}
 function defaultProfile() {
-  return { height: 70, weight: 175, age: 28, sex: "male", activity: "moderate" };
+  return { height: 70, weight: 175, age: 28, sex: "male", activity: "moderate", goals: { calories: null, protein: null } };
 }
 function defaultState() {
   // Fresh installs are EMPTY (no seed workouts, no fake PRs). The user's real
@@ -321,7 +486,9 @@ function defaultState() {
     settings: { units: "lbs", theme: "dark", gistId: "" },
     profile: defaultProfile(),
     nutrition: [],
-    health: { lastFetch: null, data: null, lastError: null },
+    health: { lastFetch: null, data: null, lastError: null, daily: {} },
+    deletedWorkouts: {},
+    lastModified: 0,
     seedHistoryLoaded: true, // suppress migrate() from ever loading synthetic data
   };
 }
@@ -335,9 +502,15 @@ function migrate(s) {
   s.settings.theme ??= "dark";
   s.settings.gistId ??= "";
   s.profile = Object.assign(defaultProfile(), s.profile || {});
+  s.profile.goals = Object.assign({ calories: null, protein: null }, s.profile.goals || {});
   s.nutrition ??= [];
   s.health ??= { lastFetch: null, data: null, lastError: null };
+  s.health.daily ??= {};
+  s.deletedWorkouts ??= {};
+  s.lastModified ??= 0;
   s.seedHistoryLoaded ??= false;
+  // Per-entry notes + per-workout health are optional; normalise old shapes
+  s.workouts.forEach(w => { w.updatedAt ??= w.createdAt || 0; });
   // Seed templates if missing (first run after this feature shipped)
   if (!s.templates) s.templates = JSON.parse(JSON.stringify(DEFAULT_TEMPLATES));
   // Migrate old object-keyed templates → array shape
@@ -447,6 +620,7 @@ function loadHistoryInto(s) {
 
 let state = loadState();
 let activeWorkoutId = null;
+lastSavedAt = Date.now();   // whatever we loaded is already on disk
 
 /* ───────── Theme ───────── */
 function applyTheme() {
@@ -496,7 +670,7 @@ function openTemplateChooser() {
   state.templates.forEach(t => {
     const preview = t.exercises.slice(0, 3).join(" · ") + (t.exercises.length > 3 ? `  +${t.exercises.length - 3}` : "");
     tiles.push(`
-      <button class="template-tile" data-template="${escapeHtml(t.id)}">
+      <button class="template-tile" data-template="${escapeHtml(t.id)}" style="--hue:${hueFor(t.name)}">
         <div class="tile-name">${escapeHtml(t.name)} <span class="tile-count">${t.exercises.length}</span></div>
         <div class="tile-sub">${escapeHtml(t.subtitle || "")}</div>
         <div class="tile-list">${escapeHtml(preview)}</div>
@@ -559,40 +733,80 @@ function addEntry(exerciseId) {
   const w = getWorkout(activeWorkoutId);
   if (!w) return;
   const ex = state.exercises.find(e => e.id === exerciseId);
+  const type = exerciseType(ex);
+  const n = type === "cardio" ? 1 : (ex?.defaultSets ?? 3);
   const sets = [];
-  if (ex?.type === "cardio") {
-    sets.push({ duration: "", distance: "", avgHR: "" });
-  } else {
-    const n = ex?.defaultSets ?? 3;
-    for (let i = 0; i < n; i++) sets.push({ load: "", reps: "" });
-  }
-  w.entries.push({ exerciseId, sets });
+  for (let i = 0; i < n; i++) sets.push(blankSet(type));
+  w.entries.push({ exerciseId, sets, note: "" });
+  saveState();
+}
+
+// Record a deletion so a device that was offline can't bring the workout back on merge.
+function deleteWorkout(id) {
+  state.workouts = state.workouts.filter(w => w.id !== id);
+  state.deletedWorkouts = state.deletedWorkouts || {};
+  state.deletedWorkouts[id] = Date.now();
+  if (activeWorkoutId === id) activeWorkoutId = null;
   saveState();
 }
 
 function discardWorkout() {
   if (!activeWorkoutId) return;
   if (!confirm("Discard this workout? Nothing will be saved.")) return;
-  state.workouts = state.workouts.filter(w => w.id !== activeWorkoutId);
-  activeWorkoutId = null;
-  saveState();
+  deleteWorkout(activeWorkoutId);
   renderToday();
   toast("Workout discarded");
+}
+
+// Drop empty trailing sets (keep at least one per entry) before a workout is closed out.
+function trimEmptySets(w) {
+  w.entries.forEach(e => { e.sets = e.sets.filter((s, i) => i === 0 || setHasData(s)); });
+}
+function workoutHasData(w) {
+  return w.entries.some(e => e.sets.some(setHasData));
 }
 
 // Finalize current workout silently — used by end-time auto-save and the inactivity timer.
 function autoFinalize(toastMsg = "Workout saved") {
   const w = getWorkout(activeWorkoutId);
   if (!w) return;
-  // Strip empty trailing sets, keep at least one per entry
-  w.entries.forEach(e => {
-    e.sets = e.sets.filter((s, i) => i === 0 || s.load !== "" || s.reps !== "");
-  });
+  trimEmptySets(w);
   saveState();
+  const finishedId = activeWorkoutId;
   activeWorkoutId = null;
   clearInactivityTimer();
   renderToday();
   toast(toastMsg);
+  attachWatchData(finishedId, { silent: false });
+}
+
+// Native only: pull heart-rate / calories / the Watch's own workout record for
+// the workout's start→end window and store it on the workout. No-op on the web.
+async function attachWatchData(workoutId, { silent = true } = {}) {
+  const api = window.WorkoutNativeHealth;
+  if (!api?.isNative || !api.enrichWorkout) return null;
+  const w = getWorkout(workoutId);
+  if (!w || !w.startTime || !w.endTime) return null;
+  try {
+    const h = await api.enrichWorkout({ date: w.date, startTime: w.startTime, endTime: w.endTime });
+    if (!h) { if (!silent) toast("No Watch data found for that window"); return null; }
+    w.health = h;
+    w.updatedAt = Date.now();
+    saveState();
+    if (!silent) {
+      const bits = [];
+      if (h.avgHR) bits.push(`avg ${h.avgHR} bpm`);
+      if (h.maxHR) bits.push(`max ${h.maxHR}`);
+      if (h.activeKcal) bits.push(`${fmt(h.activeKcal)} kcal`);
+      toast(bits.length ? `Watch: ${bits.join(" · ")}` : "Watch data attached");
+    }
+    if (document.querySelector("#view-history.active")) renderHistory();
+    return h;
+  } catch (e) {
+    console.warn("[watch] enrich failed:", e?.message || e);
+    if (!silent) toast("Couldn't read Watch data");
+    return null;
+  }
 }
 
 // Inactivity auto-save: if a workout is open and nothing happens for 1 hour, finalize it.
@@ -604,8 +818,7 @@ function resetInactivityTimer() {
   inactivityTimer = setTimeout(() => {
     const w = getWorkout(activeWorkoutId);
     if (!w) return;
-    const hasData = w.entries.some(e => e.sets.some(s => s.load !== "" || s.reps !== ""));
-    if (!hasData) return; // don't auto-save an empty workout
+    if (!workoutHasData(w)) return; // don't auto-save an empty workout
     if (!w.endTime) w.endTime = nowHHMM();
     autoFinalize("Auto-saved after 1 hour idle");
   }, INACTIVITY_MS);
@@ -619,20 +832,32 @@ function finishWorkout() {
   if (!w) return;
   // Auto-fill end time if user didn't manually set it
   if (!w.endTime) w.endTime = nowHHMM();
-  // Strip out empty sets but keep at least one per entry
-  w.entries.forEach(e => {
-    e.sets = e.sets.filter((s, i) => i === 0 || s.load !== "" || s.reps !== "");
-  });
-  // Strip out entries with no logged data at all
-  const hasAnyData = w.entries.some(e => e.sets.some(s => s.load !== "" || s.reps !== ""));
-  if (!hasAnyData) {
+  trimEmptySets(w);
+  if (!workoutHasData(w)) {
     if (!confirm("This workout has no logged sets. Save anyway?")) return;
   }
   saveState();
+  const finishedId = activeWorkoutId;
   activeWorkoutId = null;
+  clearInactivityTimer();
   renderToday();
   toast("Workout saved");
   showView("history");
+  attachWatchData(finishedId, { silent: false });
+}
+
+// Duration readout: fixed once ended, live (elapsed since start) while in progress.
+function renderDuration(w) {
+  const el = $("#workout-duration");
+  if (!el || !w) return;
+  if (w.startTime && !w.endTime) {
+    const mins = durationMinutes(w.startTime, nowHHMM());
+    el.textContent = mins > 0 ? `${durationLabel(w.startTime, nowHHMM())} · live` : "Just started";
+    el.classList.add("live");
+  } else {
+    el.textContent = durationLabel(w.startTime, w.endTime);
+    el.classList.remove("live");
+  }
 }
 
 function renderToday() {
@@ -653,7 +878,7 @@ function renderToday() {
   $("#workout-start").value = w.startTime || "";
   $("#workout-end").value = w.endTime || "";
   $("#workout-notes").value = w.notes || "";
-  $("#workout-duration").textContent = durationLabel(w.startTime, w.endTime);
+  renderDuration(w);
 
   const entries = $("#entries");
   entries.innerHTML = "";
@@ -665,88 +890,96 @@ function renderEntry(entry, idx) {
   if (!ex) return document.createElement("div");
   const w = getWorkout(activeWorkoutId);
 
-  // Previous-week reference for this exercise
+  // Most recent previous session that logged this exercise — for the "Prev" column
   const prevSession = state.workouts
     .filter(x => x.id !== w.id && x.entries.some(e => e.exerciseId === ex.id))
     .sort((a,b) => b.date.localeCompare(a.date))[0];
   const prevSets = prevSession?.entries.find(e => e.exerciseId === ex.id)?.sets ?? [];
 
-  if (ex.type === "cardio") return renderCardioEntry(entry, idx, ex, prevSets, w);
-  return renderStrengthEntry(entry, idx, ex, prevSets, w);
+  const type = exerciseType(ex);
+  const div = type === "cardio"
+    ? renderCardioEntry(entry, idx, ex, prevSets, w)
+    : renderSetEntry(entry, idx, ex, prevSets, w, type);
+
+  // Per-exercise note (plain text, saved with the workout)
+  const noteWrap = document.createElement("div");
+  noteWrap.className = "entry-note";
+  noteWrap.innerHTML = `<input type="text" class="inp-note" placeholder="Note" value="${escapeHtml(entry.note || "")}" autocapitalize="sentences">`;
+  noteWrap.querySelector(".inp-note").addEventListener("input", e => { entry.note = e.target.value; saveState(); });
+  div.appendChild(noteWrap);
+  return div;
 }
 
-function renderStrengthEntry(entry, idx, ex, prevSets, w) {
+// Column layout per set-based type. Cardio has its own renderer.
+const SET_COLUMNS = {
+  strength:   () => [{ key: "load", label: state.settings.units, step: "0.5", mode: "decimal" }, { key: "reps", label: "Reps", step: "1", mode: "numeric" }],
+  bodyweight: () => [{ key: "reps", label: "Reps", step: "1", mode: "numeric" }],
+  timed:      () => [{ key: "seconds", label: "Sec", step: "1", mode: "numeric" }],
+};
+function prevLabel(type, s) {
+  if (!s || !setHasData(s)) return "—";
+  if (type === "strength")   return `${parseNum(s.load)}×${parseNum(s.reps)}`;
+  if (type === "bodyweight") return `${parseNum(s.reps)}`;
+  if (type === "timed")      return `${parseNum(s.seconds)}s`;
+  return "—";
+}
+
+function renderSetEntry(entry, idx, ex, prevSets, w, type) {
   const div = document.createElement("div");
-  div.className = "entry";
+  div.className = `entry entry-${type}`;
   div.dataset.idx = idx;
+  const cols = SET_COLUMNS[type]();
 
-  const u = state.settings.units;
-
-  const setRows = entry.sets.map((s, si) => {
-    const prev = prevSets[si];
-    const prevText = prev && prev.load !== "" && prev.reps !== ""
-      ? `${parseNum(prev.load)}×${parseNum(prev.reps)}`
-      : "—";
-    return `
+  const setRows = entry.sets.map((s, si) => `
       <tr>
         <td class="set-num">${si+1}</td>
-        <td><input class="inp-load" type="number" inputmode="decimal" step="0.5" min="0" value="${s.load ?? ""}" placeholder="${u}"></td>
-        <td><input class="inp-reps" type="number" inputmode="numeric" step="1" min="0" value="${s.reps ?? ""}" placeholder="reps"></td>
-        <td class="col-prev">${prevText}</td>
+        ${cols.map(c => `<td><input class="inp-set" data-key="${c.key}" type="number" inputmode="${c.mode}" step="${c.step}" min="0" value="${s[c.key] ?? ""}" placeholder="${c.label}"></td>`).join("")}
+        <td class="col-prev">${prevLabel(type, prevSets[si])}</td>
         <td class="col-actions"><button class="icon-btn danger btn-remove-set" aria-label="Remove set">×</button></td>
-      </tr>`;
-  }).join("");
+      </tr>`).join("");
+
+  const sub = [`${ex.defaultSets || entry.sets.length} sets`, ex.defaultRepRange].filter(Boolean).join(" · ");
+  const typeTag = type === "strength" ? "" : `<span class="type-tag ${type}">${EXERCISE_TYPES[type].label}</span>`;
+  const stats = type === "strength"
+    ? `<span>Vol <strong class="stat-vol">0</strong></span><span>e1RM <strong class="stat-1rm">0</strong></span>`
+    : type === "bodyweight"
+      ? `<span>Reps <strong class="stat-total">0</strong></span>`
+      : `<span>Total <strong class="stat-total">0s</strong></span>`;
 
   div.innerHTML = `
     <div class="entry-head">
       <div>
-        <div class="entry-name">${escapeHtml(ex.name)}</div>
-        <div class="entry-sub">${ex.defaultSets || entry.sets.length} sets · ${escapeHtml(ex.defaultRepRange || "")}</div>
+        <div class="entry-name">${escapeHtml(ex.name)}${typeTag}</div>
+        <div class="entry-sub">${escapeHtml(sub)}</div>
       </div>
       <div class="entry-actions">
         <button class="icon-btn btn-add-set" aria-label="Add set">+</button>
-        <button class="icon-btn danger btn-remove-entry" aria-label="Remove exercise">🗑</button>
+        <button class="icon-btn danger btn-remove-entry" aria-label="Remove exercise">${ICON.trash}</button>
       </div>
     </div>
     <table class="sets-table">
-      <thead><tr><th>#</th><th>${u}</th><th>Reps</th><th>Prev</th><th></th></tr></thead>
+      <thead><tr><th>#</th>${cols.map(c => `<th>${c.label}</th>`).join("")}<th>Prev</th><th></th></tr></thead>
       <tbody>${setRows}</tbody>
     </table>
-    <div class="entry-footer">
-      <div class="entry-stats">
-        <span>Vol <strong class="stat-vol">0</strong></span>
-        <span>e1RM <strong class="stat-1rm">0</strong></span>
-        <span class="stat-delta"></span>
-      </div>
-    </div>
+    <div class="entry-footer"><div class="entry-stats">${stats}<span class="stat-delta"></span></div></div>
   `;
 
-  div.querySelector(".btn-add-set").onclick = () => {
-    entry.sets.push({ load: "", reps: "" });
-    saveState();
-    renderToday();
-  };
-  div.querySelector(".btn-remove-entry").onclick = () => {
-    w.entries.splice(idx, 1);
-    saveState();
-    renderToday();
-  };
+  div.querySelector(".btn-add-set").onclick = () => { entry.sets.push(blankSet(type)); saveState(); renderToday(); };
+  div.querySelector(".btn-remove-entry").onclick = () => { w.entries.splice(idx, 1); saveState(); renderToday(); };
   div.querySelectorAll(".btn-remove-set").forEach((btn, si) => {
     btn.onclick = () => {
       entry.sets.splice(si, 1);
-      if (entry.sets.length === 0) entry.sets.push({ load: "", reps: "" });
-      saveState();
-      renderToday();
+      if (entry.sets.length === 0) entry.sets.push(blankSet(type));
+      saveState(); renderToday();
     };
   });
-  div.querySelectorAll(".inp-load").forEach((inp, si) => {
-    inp.addEventListener("input", () => { entry.sets[si].load = inp.value; saveState(); updateEntryStats(div, entry, prevSets); });
-  });
-  div.querySelectorAll(".inp-reps").forEach((inp, si) => {
-    inp.addEventListener("input", () => { entry.sets[si].reps = inp.value; saveState(); updateEntryStats(div, entry, prevSets); });
+  div.querySelectorAll("tbody tr").forEach((tr, si) => {
+    tr.querySelectorAll(".inp-set").forEach(inp => {
+      inp.addEventListener("input", () => { entry.sets[si][inp.dataset.key] = inp.value; saveState(); updateEntryStats(div, entry, prevSets, type); });
+    });
   });
 
-  updateEntryStats(div, entry, prevSets);
+  updateEntryStats(div, entry, prevSets, type);
   return div;
 }
 
@@ -754,118 +987,117 @@ function renderCardioEntry(entry, idx, ex, prevSets, w) {
   const div = document.createElement("div");
   div.className = "entry entry-cardio";
   div.dataset.idx = idx;
+  if (entry.sets.length === 0) entry.sets.push(blankSet("cardio"));
 
-  // Cardio = single bout by default. Use first "set" as the bout.
-  if (entry.sets.length === 0) entry.sets.push({ duration: "", distance: "", avgHR: "" });
-  const s = entry.sets[0];
-  const prev = prevSets[0];
   const prevBits = [];
-  if (prev?.duration) prevBits.push(`${parseNum(prev.duration)} min`);
-  if (prev?.distance) prevBits.push(`${parseNum(prev.distance)} mi`);
-  if (prev?.avgHR) prevBits.push(`${parseNum(prev.avgHR)} bpm`);
-  const prevLabel = prevBits.length ? `Prev: ${prevBits.join(" · ")}` : "";
+  const pd = prevSets.reduce((a, s) => a + parseNum(s.duration), 0);
+  const pm = prevSets.reduce((a, s) => a + parseNum(s.distance), 0);
+  if (pd) prevBits.push(`${fmt(pd)} min`);
+  if (pm) prevBits.push(`${fmt(pm, 1)} mi`);
+  const prevLabelText = prevBits.length ? `Last time: ${prevBits.join(" · ")}` : "";
+
+  const rows = entry.sets.map((s, si) => `
+      <div class="cardio-row" data-si="${si}">
+        <div class="cardio-row-num">${entry.sets.length > 1 ? si + 1 : ""}</div>
+        <label><span class="label">Min</span><input class="inp-cardio" data-key="duration" type="number" inputmode="decimal" step="1" min="0" value="${s.duration ?? ""}" placeholder="min"></label>
+        <label><span class="label">Miles</span><input class="inp-cardio" data-key="distance" type="number" inputmode="decimal" step="0.1" min="0" value="${s.distance ?? ""}" placeholder="mi"></label>
+        <label><span class="label">Avg HR</span><input class="inp-cardio" data-key="avgHR" type="number" inputmode="numeric" step="1" min="0" value="${s.avgHR ?? ""}" placeholder="bpm"></label>
+        <button class="icon-btn danger btn-remove-set" aria-label="Remove interval">×</button>
+      </div>`).join("");
 
   div.innerHTML = `
     <div class="entry-head">
       <div>
-        <div class="entry-name">${escapeHtml(ex.name)} <span class="cardio-tag">cardio</span></div>
-        <div class="entry-sub muted">${escapeHtml(prevLabel)}</div>
+        <div class="entry-name">${escapeHtml(ex.name)}<span class="type-tag cardio">Cardio</span></div>
+        <div class="entry-sub">${escapeHtml(prevLabelText)}</div>
       </div>
       <div class="entry-actions">
-        <button class="icon-btn danger btn-remove-entry" aria-label="Remove exercise">🗑</button>
+        <button class="icon-btn btn-add-set" aria-label="Add interval" title="Add interval">+</button>
+        <button class="icon-btn danger btn-remove-entry" aria-label="Remove exercise">${ICON.trash}</button>
       </div>
     </div>
-    <div class="cardio-grid">
-      <label>
-        <span class="label">Duration (min)</span>
-        <input class="inp-duration" type="number" inputmode="decimal" step="1" min="0" value="${s.duration ?? ""}" placeholder="min">
-      </label>
-      <label>
-        <span class="label">Distance (mi)</span>
-        <input class="inp-distance" type="number" inputmode="decimal" step="0.1" min="0" value="${s.distance ?? ""}" placeholder="miles">
-      </label>
-      <label>
-        <span class="label">Avg HR</span>
-        <input class="inp-avghr" type="number" inputmode="numeric" step="1" min="0" value="${s.avgHR ?? ""}" placeholder="bpm">
-      </label>
-    </div>
+    <div class="cardio-rows">${rows}</div>
     <div class="entry-footer">
       <div class="entry-stats">
-        <span>Total <strong class="stat-cardio-total">0 min</strong></span>
+        <span>Total <strong class="stat-cardio-total">—</strong></span>
         <span class="stat-cardio-pace"></span>
         <span class="stat-delta"></span>
       </div>
     </div>
   `;
 
-  div.querySelector(".btn-remove-entry").onclick = () => {
-    w.entries.splice(idx, 1);
-    saveState();
-    renderToday();
-  };
-  const update = () => { saveState(); updateCardioStats(div, entry, prevSets); };
-  div.querySelector(".inp-duration").addEventListener("input", e => { s.duration = e.target.value; update(); });
-  div.querySelector(".inp-distance").addEventListener("input", e => { s.distance = e.target.value; update(); });
-  div.querySelector(".inp-avghr").addEventListener("input", e => { s.avgHR = e.target.value; update(); });
+  div.querySelector(".btn-add-set").onclick = () => { entry.sets.push(blankSet("cardio")); saveState(); renderToday(); };
+  div.querySelector(".btn-remove-entry").onclick = () => { w.entries.splice(idx, 1); saveState(); renderToday(); };
+  div.querySelectorAll(".btn-remove-set").forEach((btn, si) => {
+    btn.onclick = () => {
+      entry.sets.splice(si, 1);
+      if (entry.sets.length === 0) entry.sets.push(blankSet("cardio"));
+      saveState(); renderToday();
+    };
+  });
+  div.querySelectorAll(".cardio-row").forEach((row, si) => {
+    row.querySelectorAll(".inp-cardio").forEach(inp => {
+      inp.addEventListener("input", () => { entry.sets[si][inp.dataset.key] = inp.value; saveState(); updateCardioStats(div, entry, prevSets); });
+    });
+  });
 
   updateCardioStats(div, entry, prevSets);
   return div;
 }
 
 function updateCardioStats(div, entry, prevSets) {
-  const s = entry.sets[0] || {};
-  const dur = parseNum(s.duration);
-  const dist = parseNum(s.distance);
-  div.querySelector(".stat-cardio-total").textContent = dur ? `${fmt(dur)} min` : "—";
+  const dur = entry.sets.reduce((a, s) => a + parseNum(s.duration), 0);
+  const dist = entry.sets.reduce((a, s) => a + parseNum(s.distance), 0);
+  const bits = [];
+  if (dur) bits.push(`${fmt(dur)} min`);
+  if (dist) bits.push(`${fmt(dist, 1)} mi`);
+  div.querySelector(".stat-cardio-total").textContent = bits.length ? bits.join(" · ") : "—";
   const paceEl = div.querySelector(".stat-cardio-pace");
   if (dur > 0 && dist > 0) {
-    const paceMin = dur / dist;
-    const min = Math.floor(paceMin);
-    const sec = Math.round((paceMin - min) * 60);
-    paceEl.innerHTML = `Pace <strong>${min}:${String(sec).padStart(2,"0")}/mi</strong>`;
-  } else {
-    paceEl.textContent = "";
-  }
+    const paceMin = dur / dist, m = Math.floor(paceMin), s = Math.round((paceMin - m) * 60);
+    paceEl.innerHTML = `Pace <strong>${m}:${String(s).padStart(2,"0")}/mi</strong>`;
+  } else paceEl.textContent = "";
   const delta = div.querySelector(".stat-delta");
-  const prev = prevSets[0];
-  const prevDur = parseNum(prev?.duration);
+  const prevDur = prevSets.reduce((a, s) => a + parseNum(s.duration), 0);
   if (prevDur > 0 && dur > 0) {
     const diff = dur - prevDur;
     if (Math.abs(diff) < 0.5) delta.textContent = "= same";
     else if (diff > 0) delta.innerHTML = `<span class="delta-up">▲ +${fmt(diff)} min</span>`;
     else delta.innerHTML = `<span class="delta-down">▼ ${fmt(diff)} min</span>`;
-  } else {
-    delta.textContent = "";
-  }
+  } else delta.textContent = "";
 }
 
-function updateEntryStats(div, entry, prevSets) {
+function updateEntryStats(div, entry, prevSets, type = "strength") {
+  const delta = div.querySelector(".stat-delta");
+  const showDelta = (cur, prev, unit = "") => {
+    if (!(prev > 0 && cur > 0)) { delta.textContent = ""; return; }
+    const diff = cur - prev;
+    if (Math.abs(diff) < 0.001) delta.textContent = "= same";
+    else if (diff > 0) delta.innerHTML = `<span class="delta-up">▲ +${fmt(diff)}${unit}</span>`;
+    else delta.innerHTML = `<span class="delta-down">▼ ${fmt(diff)}${unit}</span>`;
+  };
+  if (type === "bodyweight") {
+    const cur = entry.sets.reduce((a, s) => a + parseNum(s.reps), 0);
+    const prev = prevSets.reduce((a, s) => a + parseNum(s.reps), 0);
+    div.querySelector(".stat-total").textContent = fmt(cur);
+    showDelta(cur, prev, " reps"); return;
+  }
+  if (type === "timed") {
+    const cur = entry.sets.reduce((a, s) => a + parseNum(s.seconds), 0);
+    const prev = prevSets.reduce((a, s) => a + parseNum(s.seconds), 0);
+    div.querySelector(".stat-total").textContent = `${fmt(cur)}s`;
+    showDelta(cur, prev, "s"); return;
+  }
   let vol = 0, best1rm = 0;
   entry.sets.forEach(s => {
-    const v = setVolume(s.load, s.reps);
-    vol += v;
+    vol += setVolume(s.load, s.reps);
     const r = oneRM(parseNum(s.load), parseNum(s.reps));
     if (r > best1rm) best1rm = r;
   });
-  let prevVol = 0;
-  prevSets.forEach(s => { prevVol += setVolume(s.load, s.reps); });
-
+  const prevVol = prevSets.reduce((a, s) => a + setVolume(s.load, s.reps), 0);
   div.querySelector(".stat-vol").textContent = fmt(vol);
   div.querySelector(".stat-1rm").textContent = fmt(best1rm, 1);
-  const delta = div.querySelector(".stat-delta");
-  if (prevVol > 0) {
-    const diff = vol - prevVol;
-    if (Math.abs(diff) < 0.001) {
-      delta.textContent = "= same";
-      delta.className = "stat-delta";
-    } else if (diff > 0) {
-      delta.innerHTML = `<span class="delta-up">▲ +${fmt(diff)}</span>`;
-    } else {
-      delta.innerHTML = `<span class="delta-down">▼ ${fmt(diff)}</span>`;
-    }
-  } else {
-    delta.textContent = "";
-  }
+  showDelta(vol, prevVol);
 }
 
 function escapeHtml(s) {
@@ -919,11 +1151,47 @@ function openPicker(onPick) {
 function closePicker() { $("#picker-modal").classList.add("hidden"); }
 
 /* ───────── History view ───────── */
+// Human-readable set summary for a history row, per exercise type.
+function setsSummary(type, sets) {
+  const logged = sets.filter(setHasData);
+  if (!logged.length) return "";
+  switch (type) {
+    case "cardio": {
+      const dur = logged.reduce((a, s) => a + parseNum(s.duration), 0);
+      const dist = logged.reduce((a, s) => a + parseNum(s.distance), 0);
+      const hr = logged.map(s => parseNum(s.avgHR)).filter(Boolean);
+      const bits = [];
+      if (dur) bits.push(`${fmt(dur)} min`);
+      if (dist) bits.push(`${fmt(dist, 1)} mi`);
+      if (hr.length) bits.push(`${Math.round(hr.reduce((a, b) => a + b, 0) / hr.length)} bpm`);
+      if (logged.length > 1) bits.push(`${logged.length} intervals`);
+      return bits.join(" · ");
+    }
+    case "timed":      return logged.map(s => `${parseNum(s.seconds)}s`).join("  ·  ");
+    case "bodyweight": return logged.map(s => `${parseNum(s.reps)}`).join("  ·  ") + " reps";
+    default:           return logged.map(s => `${parseNum(s.load)}×${parseNum(s.reps)}`).join("  ·  ");
+  }
+}
+
+// "traditionalStrengthTraining" → "Traditional Strength Training"
+function humanizeWorkoutType(t) {
+  if (!t) return "Workout";
+  return String(t).replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, ch => ch.toUpperCase());
+}
+
+// Template → accent hue so cards are visually scannable (stable per name).
+function hueFor(name) {
+  const fixed = { push: 214, pull: 268, legs: 152, mix: 32, cardio: 6 };
+  const k = String(name || "").trim().toLowerCase();
+  if (fixed[k] != null) return fixed[k];
+  let h = 0; for (const ch of k) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return h;
+}
+
 function renderHistory() {
   const list = $("#history-list");
   const filter = $("#history-filter");
 
-  // Populate filter once
   if (filter.options.length < 2) {
     state.exercises.slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(e => {
       const opt = document.createElement("option");
@@ -934,66 +1202,73 @@ function renderHistory() {
   }
 
   const filterId = filter.value;
-  let items = state.workouts
-    .filter(w => w.id !== activeWorkoutId) // hide in-progress
+  const items = state.workouts
+    .filter(w => w.id !== activeWorkoutId)
     .filter(w => !filterId || w.entries.some(e => e.exerciseId === filterId))
-    .sort((a,b) => (b.date + b.createdAt).localeCompare(a.date + a.createdAt));
+    .sort((a,b) => (b.date + (b.createdAt || 0)).localeCompare(a.date + (a.createdAt || 0)));
 
   if (items.length === 0) {
-    list.innerHTML = `<div class="card muted" style="text-align:center;padding:40px 16px">No saved workouts yet.</div>`;
+    list.innerHTML = `<div class="empty-card"><div class="empty-art">${ICON.clock}</div><h2>No workouts yet</h2><p>Start one from the Today tab. It'll show up here with volume, time, and Watch data.</p></div>`;
     return;
   }
 
+  const native = isNativeApp();
   list.innerHTML = items.map(w => {
-    let totalVol = 0, totalSets = 0;
-    w.entries.forEach(e => e.sets.forEach(s => {
-      if (s.load !== "" && s.reps !== "") {
-        totalVol += setVolume(s.load, s.reps);
-        totalSets++;
-      }
-    }));
+    const s = workoutStats(w);
     const detail = w.entries.map(e => {
       const ex = state.exercises.find(x => x.id === e.exerciseId);
-      const setsText = e.sets
-        .filter(s => s.load !== "" || s.reps !== "")
-        .map(s => `${parseNum(s.load)}×${parseNum(s.reps)}`)
-        .join("  ·  ");
+      const type = exerciseType(ex);
+      const txt = setsSummary(type, e.sets);
       return `<div class="history-exercise">
-        <div class="history-exercise-name">${escapeHtml(ex?.name || "Unknown")}</div>
-        <div class="history-sets">${setsText || "(no sets)"}</div>
+        <div class="history-exercise-name">${escapeHtml(ex?.name || "Unknown")}${type !== "strength" ? `<span class="type-tag ${type}">${EXERCISE_TYPES[type].label}</span>` : ""}</div>
+        <div class="history-sets">${escapeHtml(txt) || "(no sets)"}</div>
+        ${e.note ? `<div class="history-note">${escapeHtml(e.note)}</div>` : ""}
       </div>`;
     }).join("");
+
     const timeBits = [];
-    if (w.startTime && w.endTime) {
-      timeBits.push(`${w.startTime}–${w.endTime}`, durationLabel(w.startTime, w.endTime));
-    } else if (w.startTime) {
-      timeBits.push(`started ${w.startTime}`);
-    }
-    const subLine = [w.day, ...timeBits, w.notes].filter(Boolean).map(escapeHtml).join(" · ");
+    if (w.startTime && w.endTime) timeBits.push(`${w.startTime}–${w.endTime} · ${durationLabel(w.startTime, w.endTime)}`);
+    else if (w.startTime) timeBits.push(`started ${w.startTime}`);
+    const subLine = [w.day, ...timeBits].filter(Boolean).map(escapeHtml).join("  ·  ");
+
+    const stats = [];
+    if (s.volume) stats.push(`<span>Volume <strong>${fmt(s.volume)}</strong> ${state.settings.units}</span>`);
+    if (s.sets) stats.push(`<span>Sets <strong>${s.sets}</strong></span>`);
+    if (s.cardioMin) stats.push(`<span>Cardio <strong>${fmt(s.cardioMin)}</strong> min${s.cardioMi ? ` · <strong>${fmt(s.cardioMi,1)}</strong> mi` : ""}</span>`);
+    stats.push(`<span>Exercises <strong>${w.entries.length}</strong></span>`);
+
+    const h = w.health;
+    const watchLine = h ? `<div class="history-watch">
+        ${ICON.watch}
+        ${h.avgHR ? `<span class="hr">${ICON.heart} <strong>${h.avgHR}</strong> avg${h.maxHR ? ` · <strong>${h.maxHR}</strong> max` : ""}</span>` : ""}
+        ${h.activeKcal ? `<span class="kcal">${ICON.flame} <strong>${fmt(h.activeKcal)}</strong> kcal</span>` : ""}
+        ${h.hkWorkout ? `<span class="muted">${escapeHtml(humanizeWorkoutType(h.hkWorkout.type))}${h.hkWorkout.durationMin ? ` · ${h.hkWorkout.durationMin} min` : ""} on Watch</span>` : ""}
+      </div>` : "";
+    const watchBtn = native && w.startTime && w.endTime
+      ? `<button class="btn btn-ghost small btn-pull-watch">${ICON.watch} ${h ? "Refresh Watch data" : "Pull Watch data"}</button>` : "";
+
     return `
-      <div class="history-item" data-id="${w.id}">
+      <div class="history-item" data-id="${w.id}" style="--hue:${hueFor(w.day)}">
         <div class="history-item-head">
           <div>
             <div class="history-item-date">${prettyDate(w.date)}</div>
             <div class="history-item-day">${subLine}</div>
           </div>
           <div class="history-item-actions">
-            <button class="icon-btn btn-edit-workout" aria-label="Edit">✎</button>
-            <button class="icon-btn danger btn-del-workout" aria-label="Delete">×</button>
+            <button class="icon-btn btn-edit-workout" aria-label="Edit">${ICON.edit}</button>
+            <button class="icon-btn danger btn-del-workout" aria-label="Delete">${ICON.trash}</button>
           </div>
         </div>
-        <div class="history-item-stats">
-          <span>Volume <strong>${fmt(totalVol)}</strong> ${state.settings.units}</span>
-          <span>Sets <strong>${totalSets}</strong></span>
-          <span>Exercises <strong>${w.entries.length}</strong></span>
-        </div>
-        <div class="history-detail">${detail}</div>
+        <div class="history-item-stats">${stats.join("")}</div>
+        ${watchLine}
+        ${w.notes ? `<div class="history-notes">${escapeHtml(w.notes)}</div>` : ""}
+        <div class="history-detail">${detail}${watchBtn}</div>
       </div>`;
   }).join("");
 
   list.querySelectorAll(".history-item").forEach(el => {
     el.onclick = (e) => {
-      if (e.target.closest(".btn-del-workout") || e.target.closest(".btn-edit-workout")) return;
+      if (e.target.closest("button")) return;
       el.classList.toggle("open");
     };
     el.querySelector(".btn-edit-workout").onclick = (e) => {
@@ -1005,10 +1280,18 @@ function renderHistory() {
     el.querySelector(".btn-del-workout").onclick = (e) => {
       e.stopPropagation();
       if (!confirm("Delete this workout?")) return;
-      state.workouts = state.workouts.filter(w => w.id !== el.dataset.id);
-      saveState();
+      deleteWorkout(el.dataset.id);
       renderHistory();
       toast("Deleted");
+    };
+    const pull = el.querySelector(".btn-pull-watch");
+    if (pull) pull.onclick = async (e) => {
+      e.stopPropagation();
+      pull.disabled = true; pull.textContent = "Reading Watch…";
+      await attachWatchData(el.dataset.id, { silent: false });
+      pull.disabled = false;
+      renderHistory();
+      list.querySelector(`.history-item[data-id="${el.dataset.id}"]`)?.classList.add("open");
     };
   });
 }
@@ -1034,22 +1317,30 @@ function renderProgress() {
 
 // Compact per-workout stats shared by This-Week tile and PR list
 function workoutStats(w) {
-  let volume = 0, sets = 0, best1rm = 0, durationMin = 0;
+  let volume = 0, sets = 0, best1rm = 0, cardioMin = 0, cardioMi = 0, timedSec = 0, bwReps = 0;
   w.entries.forEach(e => {
     const ex = state.exercises.find(x => x.id === e.exerciseId);
-    if (ex?.type === "cardio") {
-      const bout = e.sets[0];
-      durationMin += parseNum(bout?.duration);
-      return;
-    }
+    const type = exerciseType(ex);
     e.sets.forEach(s => {
-      const v = setVolume(s.load, s.reps);
-      if (v > 0) { volume += v; sets++; }
-      const r = oneRM(parseNum(s.load), parseNum(s.reps));
-      if (r > best1rm) best1rm = r;
+      if (!setHasData(s)) return;
+      switch (type) {
+        case "cardio":
+          cardioMin += parseNum(s.duration); cardioMi += parseNum(s.distance); break;
+        case "timed":
+          timedSec += parseNum(s.seconds); sets++; break;
+        case "bodyweight":
+          bwReps += parseNum(s.reps); sets++; break;
+        default: {
+          const v = setVolume(s.load, s.reps);
+          if (v > 0) { volume += v; sets++; }
+          const r = oneRM(parseNum(s.load), parseNum(s.reps));
+          if (r > best1rm) best1rm = r;
+        }
+      }
     });
   });
-  return { volume, sets, best1rm, durationMin };
+  // durationMin kept for callers that used it as "time when no start/end"
+  return { volume, sets, best1rm, cardioMin, cardioMi, timedSec, bwReps, durationMin: cardioMin };
 }
 
 function renderThisWeekTiles() {
@@ -1074,11 +1365,13 @@ function renderThisWeekTiles() {
     acc.workouts++;
     acc.volume += s.volume;
     acc.sets += s.sets;
+    acc.cardioMin += s.cardioMin;
+    acc.cardioMi += s.cardioMi;
     // Duration from start/end times, else fall back to cardio bout durations
     const wallMin = durationMinutes(w.startTime, w.endTime);
     acc.minutes += wallMin || s.durationMin;
     return acc;
-  }, { workouts: 0, volume: 0, sets: 0, minutes: 0 });
+  }, { workouts: 0, volume: 0, sets: 0, minutes: 0, cardioMin: 0, cardioMi: 0 });
 
   const now = agg(thisWs);
   const past = agg(prevWs);
@@ -1105,7 +1398,9 @@ function renderThisWeekTiles() {
     tile("Workouts", now.workouts, "", now.workouts, past.workouts) +
     tile("Volume", fmt(now.volume), " " + state.settings.units, now.volume, past.volume) +
     tile("Sets", now.sets, "", now.sets, past.sets) +
-    tile("Time", (now.minutes/60).toFixed(1), " hr", now.minutes/60, past.minutes/60, 1);
+    tile("Time", (now.minutes/60).toFixed(1), " hr", now.minutes/60, past.minutes/60, 1) +
+    tile("Cardio", fmt(now.cardioMin), " min", now.cardioMin, past.cardioMin) +
+    tile("Distance", fmt(now.cardioMi, 1), " mi", now.cardioMi, past.cardioMi, 1);
 
   const fmtRange = (d1, d2) => `${d1.toLocaleDateString(undefined,{month:"short",day:"numeric"})} – ${d2.toLocaleDateString(undefined,{month:"short",day:"numeric"})}`;
   const sun = new Date(nextMon); sun.setDate(sun.getDate() - 1);
@@ -1177,6 +1472,8 @@ const chartBase = () => {
     dim: css.getPropertyValue("--text-dim").trim() || "#8b95a4",
     accent: css.getPropertyValue("--accent").trim() || "#6ea8ff",
     grid: css.getPropertyValue("--border").trim() || "#262d36",
+    bg: css.getPropertyValue("--bg-elev").trim() || "#12161c",
+    elev: css.getPropertyValue("--bg-elev-3").trim() || "#222a34",
   };
 };
 
@@ -1185,11 +1482,15 @@ function makeLineChart(canvas, labels, datasets) {
   return new Chart(canvas, {
     type: "line",
     data: { labels, datasets: datasets.map(d => ({
-      tension: 0.25,
+      tension: 0.3,
       borderColor: d.color || c.accent,
-      backgroundColor: (d.color || c.accent) + "33",
-      pointBackgroundColor: d.color || c.accent,
-      pointRadius: 4,
+      backgroundColor: (d.color || c.accent) + "22",
+      pointBackgroundColor: c.bg,
+      pointBorderColor: d.color || c.accent,
+      pointBorderWidth: 2,
+      pointRadius: 3.5,
+      pointHoverRadius: 6,
+      pointHitRadius: 14,
       borderWidth: 2,
       fill: true,
       ...d,
@@ -1197,10 +1498,17 @@ function makeLineChart(canvas, labels, datasets) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { display: datasets.length > 1, labels: { color: c.text } } },
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: datasets.length > 1, labels: { color: c.text } },
+        tooltip: {
+          backgroundColor: c.elev, titleColor: c.text, bodyColor: c.text, borderColor: c.grid, borderWidth: 1,
+          padding: 10, cornerRadius: 10, displayColors: false,
+        },
+      },
       scales: {
-        x: { ticks: { color: c.dim }, grid: { color: c.grid, display: false } },
-        y: { ticks: { color: c.dim }, grid: { color: c.grid }, beginAtZero: true },
+        x: { ticks: { color: c.dim, maxRotation: 0, autoSkip: true, maxTicksLimit: 7, font: { size: 11 } }, grid: { display: false }, border: { display: false } },
+        y: { ticks: { color: c.dim, font: { size: 11 }, maxTicksLimit: 5 }, grid: { color: c.grid }, border: { display: false }, beginAtZero: true },
       },
     },
   });
@@ -1309,7 +1617,7 @@ function renderLibrary() {
     <div class="library-item" data-id="${e.id}">
       <div>
         <div class="library-name">${escapeHtml(e.name)}</div>
-        <div class="library-meta">${e.defaultSets}×${escapeHtml(e.defaultRepRange || "?")} ${e.days.map(d => `<span class="tag">${d}</span>`).join("")}</div>
+        <div class="library-meta">${exerciseType(e) !== "strength" ? `<span class="type-tag ${exerciseType(e)}">${EXERCISE_TYPES[exerciseType(e)].label}</span> ` : ""}${e.defaultSets}×${escapeHtml(e.defaultRepRange || "?")} ${e.days.map(d => `<span class="tag">${d}</span>`).join("")}</div>
       </div>
       <span class="muted">›</span>
     </div>`).join("");
@@ -1343,10 +1651,11 @@ function openExerciseEditor(id) {
     const name = nameInp.value.trim();
     if (!name) { toast("Name is required"); return; }
     ex.name = name;
-    ex.type = typeInp.value === "cardio" ? "cardio" : "strength";
+    ex.type = EXERCISE_TYPES[typeInp.value] ? typeInp.value : "strength";
     ex.defaultSets = parseInt(setsInp.value) || 3;
     ex.defaultRepRange = repInp.value.trim();
     ex.days = daysInp.value.split(",").map(d => d.trim()).filter(Boolean);
+    ex.updatedAt = Date.now();
     if (isNew) state.exercises.push(ex);
     // Update day lists too
     Object.keys(state.days).forEach(d => {
@@ -1412,20 +1721,15 @@ function renderTemplates() {
     const t = state.templates.find(x => x.id === id);
     if (!t) return;
 
-    card.querySelector(".template-name-input").addEventListener("input", e => {
-      t.name = e.target.value;
-      saveState();
-    });
-    card.querySelector(".template-subtitle-input").addEventListener("input", e => {
-      t.subtitle = e.target.value;
-      saveState();
-    });
+    const touch = () => { t.updatedAt = Date.now(); saveState(); };
+    card.querySelector(".template-name-input").addEventListener("input", e => { t.name = e.target.value; touch(); });
+    card.querySelector(".template-subtitle-input").addEventListener("input", e => { t.subtitle = e.target.value; touch(); });
     card.querySelectorAll(".btn-remove-tpl-ex").forEach(btn => {
       btn.onclick = (e) => {
         e.stopPropagation();
         const i = +btn.dataset.index;
         t.exercises.splice(i, 1);
-        saveState();
+        touch();
         renderTemplates();
       };
     });
@@ -1437,7 +1741,7 @@ function renderTemplates() {
         const j = dir === "up" ? i - 1 : i + 1;
         if (j < 0 || j >= t.exercises.length) return;
         [t.exercises[i], t.exercises[j]] = [t.exercises[j], t.exercises[i]];
-        saveState();
+        touch();
         renderTemplates();
       };
     });
@@ -1450,7 +1754,7 @@ function renderTemplates() {
           return;
         }
         t.exercises.push(ex.name);
-        saveState();
+        touch();
         renderTemplates();
       });
     };
@@ -1489,7 +1793,11 @@ function renderHealth() {
   $("#p-age").value = p.age;
   $("#p-sex").value = p.sex;
   $("#p-activity").value = p.activity;
+  const pgIn = $("#p-goal-protein"), cgIn = $("#p-goal-cal");
+  if (pgIn) pgIn.value = p.goals?.protein || "";
+  if (cgIn) cgIn.value = p.goals?.calories || "";
   updateProfileDisplay(p);
+  renderNutritionSyncStatus();
 
   // Health snapshot
   renderHealthSnapshot();
@@ -1499,11 +1807,35 @@ function renderHealth() {
 }
 
 function updateMacroDisplay(n) {
-  const p = parseNum(n.protein), c = parseNum(n.carbs), f = parseNum(n.fat);
-  $("#m-protein-kcal").textContent = `${fmt(p*4)} kcal`;
-  $("#m-carbs-kcal").textContent = `${fmt(c*4)} kcal`;
-  $("#m-fat-kcal").textContent = `${fmt(f*9)} kcal`;
-  $("#macro-total").textContent = `${fmt(macrosToKcal(n))} kcal`;
+  const e = effectiveNutrition(n);
+  const h = n.health || {};
+  // Placeholders carry the Health-synced value so the field reads as filled but editable
+  $("#m-protein").placeholder = h.protein != null ? String(Math.round(h.protein)) : "g";
+  $("#m-carbs").placeholder   = h.carbs   != null ? String(Math.round(h.carbs))   : "g";
+  $("#m-fat").placeholder     = h.fat     != null ? String(Math.round(h.fat))     : "g";
+  $("#m-protein-kcal").textContent = `${fmt((e.protein || 0) * 4)} kcal`;
+  $("#m-carbs-kcal").textContent   = `${fmt((e.carbs || 0) * 4)} kcal`;
+  $("#m-fat-kcal").textContent     = `${fmt((e.fat || 0) * 9)} kcal`;
+  $("#macro-total").textContent = `${fmt(e.kcal)} kcal`;
+  const src = $("#macro-source");
+  if (src) src.textContent = e.fromHealth ? "from Apple Health" : (Object.keys(h).length ? "typed · Health values greyed" : "");
+
+  // Goals
+  const p = state.profile;
+  const pg = proteinGoalFor(p), cg = calorieGoalFor(p);
+  const bar = (id, val, goal) => {
+    const el = $(id); if (!el) return;
+    const pct = goal ? Math.min(100, Math.round((val || 0) / goal * 100)) : 0;
+    el.querySelector(".goal-fill").style.width = pct + "%";
+    el.classList.toggle("met", !!goal && (val || 0) >= goal);
+    el.classList.toggle("over", id === "#goal-cal" && !!goal && (val || 0) > goal * 1.1);
+    el.querySelector(".goal-val").textContent = goal ? `${fmt(val || 0)} / ${fmt(goal)}` : fmt(val || 0);
+  };
+  bar("#goal-protein", e.protein, pg);
+  bar("#goal-cal", e.kcal, cg);
+  const pgIn = $("#p-goal-protein"), cgIn = $("#p-goal-cal");
+  if (pgIn) pgIn.placeholder = pg ? `${pg} (suggested)` : "g";
+  if (cgIn) cgIn.placeholder = cg ? `${cg} (TDEE)` : "kcal";
 }
 
 function updateProfileDisplay(p) {
@@ -1517,13 +1849,13 @@ function updateProfileDisplay(p) {
 }
 
 function updateBalance(date, n) {
-  const intake = macrosToKcal(n);
+  const intake = effectiveNutrition(n).kcal;
   const tdee = calcTDEE(state.profile);
   // If we have today's active-energy from Health, use BMR + active. Else fall back to TDEE.
   let outputKcal = tdee;
   let outputLabel = "TDEE estimate";
-  const h = state.health.data;
-  if (h && date === todayISO() && h.activeEnergyToday != null) {
+  const h = healthFor(date);
+  if (h && h.activeEnergyToday != null) {
     const bmr = calcBMR(state.profile);
     outputKcal = bmr + parseNum(h.activeEnergyToday);
     outputLabel = `BMR + ${fmt(h.activeEnergyToday)} active`;
@@ -1534,8 +1866,8 @@ function updateBalance(date, n) {
 
   const net = intake - outputKcal;
   const netEl = $("#bal-net");
-  if (intake === 0) {
-    netEl.textContent = "Log macros to see balance";
+  if (!intake) {
+    netEl.textContent = isNativeApp() ? "Sync nutrition or type macros to see balance" : "Log macros to see balance";
     netEl.className = "bal-net muted";
   } else if (Math.abs(net) < 50) {
     netEl.textContent = `${fmt(net)} kcal · maintenance`;
@@ -1549,36 +1881,48 @@ function updateBalance(date, n) {
   }
 }
 
+// Health metrics for a given date: daily history first; for today, fall back to
+// the latest snapshot (which the native sync / Shortcut keeps current).
+function healthFor(date) {
+  const daily = state.health?.daily?.[date];
+  if (daily && Object.keys(daily).length) return { ...daily, _source: "daily" };
+  if (date === todayISO() && state.health?.data) return { ...state.health.data, _source: "latest" };
+  return null;
+}
+
 function renderHealthSnapshot() {
-  // Show snapshot as soon as we have any data (from the /api/health Shortcut) OR
-  // when a legacy Gist ID is configured.
-  const hasData = !!(state.health?.data && Object.keys(state.health.data).length);
-  const configured = hasData || !!state.settings.gistId;
+  const date = healthCurrentDate || todayISO();
+  const h = healthFor(date);
+  const hasAny = !!(h || (state.health?.data && Object.keys(state.health.data).length) || Object.keys(state.health?.daily || {}).length);
+  const configured = hasAny || !!state.settings.gistId;
   $("#health-unconfigured").classList.toggle("hidden", configured);
   $("#health-snapshot").classList.toggle("hidden", !configured);
   if (!configured) return;
 
-  const h = state.health.data || {};
+  const d = h || {};
   const set = (sel, val, suffix = "") => {
     $(sel).textContent = (val == null || val === "" || Number.isNaN(+val))
       ? "—"
-      : (typeof val === "number" ? (suffix === " bpm" || suffix === " kcal" || suffix === "" && Number.isInteger(val) ? fmt(Math.round(val)) : fmt(val, 1)) : val) + suffix;
+      : (typeof val === "number" ? (Number.isInteger(val) || suffix === " bpm" || suffix === " kcal" ? fmt(Math.round(val)) : fmt(val, 1)) : val) + suffix;
   };
-  set("#h-current-hr", h.currentHR, " bpm");
-  set("#h-resting-hr", h.restingHR, " bpm");
-  set("#h-hrv", h.hrv, " ms");
-  set("#h-spo2", h.bloodOxygen, "%");
-  set("#h-steps", h.stepsToday, "");
-  set("#h-distance", h.distanceMiToday, " mi");
-  set("#h-active", h.activeEnergyToday, " kcal");
-  set("#h-resting-kcal", h.restingEnergyToday, " kcal");
-  set("#h-exercise", h.exerciseMinutesToday, " min");
-  set("#h-stand", h.standHoursToday, " hr");
-  set("#h-sleep", h.sleepHours, " hr");
-  set("#h-weight", h.weightLbs, " lbs");
-  set("#h-bodyfat", h.bodyFatPct, "%");
+  set("#h-current-hr", d.currentHR, " bpm");
+  set("#h-resting-hr", d.restingHR, " bpm");
+  set("#h-hrv", d.hrv, " ms");
+  set("#h-spo2", d.bloodOxygen, "%");
+  set("#h-steps", d.stepsToday, "");
+  set("#h-distance", d.distanceMiToday, " mi");
+  set("#h-active", d.activeEnergyToday, " kcal");
+  set("#h-resting-kcal", d.restingEnergyToday, " kcal");
+  set("#h-exercise", d.exerciseMinutesToday, " min");
+  set("#h-stand", d.standHoursToday, " hr");
+  set("#h-sleep", d.sleepHours, " hr");
+  set("#h-weight", d.weightLbs, " lbs");
+  set("#h-bodyfat", d.bodyFatPct, "%");
 
-  let updated = relativeTime(state.health.lastFetch);
+  let updated;
+  if (!h) updated = `No Health data recorded for ${prettyDate(date)}`;
+  else if (h._source === "daily" && h.updatedAt) updated = `Recorded ${relativeTime(h.updatedAt)}`;
+  else updated = `Latest sync ${relativeTime(state.health.lastFetch)}`;
   if (state.health.lastError) updated += ` · ⚠ ${state.health.lastError}`;
   $("#h-updated").textContent = updated;
 }
@@ -1682,23 +2026,15 @@ function bindEvents() {
     const w = getWorkout(activeWorkoutId); if (!w) return;
     w.startTime = e.target.value;
     saveState();
-    $("#workout-duration").textContent = durationLabel(w.startTime, w.endTime);
+    renderDuration(w);
   });
   $("#workout-end").addEventListener("change", e => {
     const w = getWorkout(activeWorkoutId); if (!w) return;
     w.endTime = e.target.value;
     saveState();
-    $("#workout-duration").textContent = durationLabel(w.startTime, w.endTime);
+    renderDuration(w);
     if (w.endTime) autoFinalize("Workout saved · end time set");
   });
-  $("#btn-end-now").onclick = () => {
-    const w = getWorkout(activeWorkoutId); if (!w) return;
-    w.endTime = nowHHMM();
-    saveState();
-    $("#workout-end").value = w.endTime;
-    $("#workout-duration").textContent = durationLabel(w.startTime, w.endTime);
-    autoFinalize("Workout saved · ended now");
-  };
   $("#workout-notes").addEventListener("input", e => {
     const w = getWorkout(activeWorkoutId); if (w) { w.notes = e.target.value; saveState(); }
   });
@@ -1755,7 +2091,7 @@ function bindEvents() {
   $("#btn-templates-add").onclick = () => {
     const name = (prompt("Template name (e.g. Upper, Lower, Core)") || "").trim();
     if (!name) return;
-    state.templates.push({ id: uid(), name, subtitle: "", exercises: [] });
+    state.templates.push({ id: uid(), name, subtitle: "", exercises: [], updatedAt: Date.now() });
     saveState();
     renderTemplates();
   };
@@ -1803,6 +2139,25 @@ function bindEvents() {
     });
   });
   $("#btn-health-refresh").onclick = () => syncHealth(true);
+  ["protein", "cal"].forEach(k => {
+    const el = $(`#p-goal-${k}`); if (!el) return;
+    el.addEventListener("input", e => {
+      state.profile.goals = state.profile.goals || {};
+      state.profile.goals[k === "cal" ? "calories" : "protein"] = parseNum(e.target.value) || null;
+      saveState();
+      updateMacroDisplay(getNutritionFor(healthCurrentDate || todayISO()));
+    });
+  });
+  const nutBtn = $("#btn-nutrition-sync");
+  if (nutBtn) nutBtn.onclick = async () => {
+    if (!window.WorkoutNativeHealth?.syncNutrition) return;
+    const label = nutBtn.textContent; nutBtn.disabled = true; nutBtn.textContent = "Reading Apple Health…";
+    try {
+      const n = await window.WorkoutNativeHealth.syncNutrition(14);
+      toast(n ? `Nutrition synced · ${n} day${n === 1 ? "" : "s"}` : "No nutrition entries found in Health yet");
+    } catch (e) { toast("Couldn't read nutrition: " + (e?.message || e)); }
+    finally { nutBtn.disabled = false; nutBtn.textContent = label; renderHealth(); }
+  };
 
   // Native HealthKit: first tap triggers the iOS permission sheet, then syncs.
   const runNativeHealthSync = async (btn, statusEl) => {
@@ -1895,13 +2250,44 @@ function maybeShowInstallBanner() {
 // state.health.data; saveState() pushes to Firestore via the normal sync path.
 window.__applyNativeHealth = (metrics) => {
   if (!metrics || typeof metrics !== "object") return;
-  state.health = state.health || { lastFetch: null, data: null, lastError: null };
-  state.health.data = { ...(state.health.data || {}), ...metrics, updatedAt: new Date().toISOString() };
-  state.health.lastFetch = Date.now();
+  state.health = state.health || { lastFetch: null, data: null, lastError: null, daily: {} };
+  state.health.daily = state.health.daily || {};
+  const now = Date.now();
+  state.health.data = { ...(state.health.data || {}), ...metrics, updatedAt: new Date(now).toISOString() };
+  // Daily history keyed by local date — "today" metrics (steps/kcal) accumulate
+  // through the day, so later syncs overwrite earlier ones for the same date.
+  const today = todayISO();
+  state.health.daily[today] = { ...(state.health.daily[today] || {}), ...metrics, updatedAt: now };
+  state.health.lastFetch = now;
   state.health.lastError = null;
   saveState();
   if (document.querySelector("#view-health.active")) renderHealth();
 };
+
+// Called by the native shell with per-day totals read from Apple Health
+// (written there by MyFitnessPal / Cronometer / any food logger).
+window.__applyNativeNutrition = (days) => {
+  if (!days || typeof days !== "object") return;
+  let touched = 0;
+  for (const [date, vals] of Object.entries(days)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const clean = {};
+    for (const k of ["calories", "protein", "carbs", "fat"]) if (Number.isFinite(vals[k])) clean[k] = Math.round(vals[k]);
+    if (!Object.keys(clean).length) continue;
+    let n = state.nutrition.find(x => x.date === date);
+    if (!n) { n = { date, protein: "", carbs: "", fat: "", notes: "" }; state.nutrition.push(n); }
+    n.health = { ...clean, syncedAt: Date.now() };
+    n.updatedAt = Date.now();
+    touched++;
+  }
+  state.nutritionSyncedAt = Date.now();
+  if (touched) saveState();
+  if (document.querySelector("#view-health.active")) renderHealth();
+};
+function renderNutritionSyncStatus() {
+  const el = $("#nutrition-sync-status"); if (!el) return;
+  el.textContent = state.nutritionSyncedAt ? `Last nutrition sync ${relativeTime(state.nutritionSyncedAt)}` : "Not synced yet";
+}
 
 /* ───────── Cloud sync bridge (Firebase — see firebase-sync.js) ───────── */
 let cloudUser = null;
@@ -1915,32 +2301,48 @@ window.__onAuthChanged = (user) => {
   renderSyncCard();
 };
 
+// Apply an inbound cloud state by MERGING it with local. Pushes back only if
+// the merge produced something the cloud doesn't already have (so two devices
+// converge and go quiet instead of echoing pushes at each other).
+function adoptCloudState(remoteState, { toastMsg } = {}) {
+  const remote = migrate(JSON.parse(JSON.stringify(remoteState)));
+  const merged = migrate(mergeStates(state, remote));
+  const changedVsRemote = stateFingerprint(merged) !== stateFingerprint(remote);
+  const changedVsLocal  = stateFingerprint(merged) !== stateFingerprint(state);
+  state = merged;
+  // If the in-progress workout vanished in the merge (deleted elsewhere), drop it
+  if (activeWorkoutId && !state.workouts.find(w => w.id === activeWorkoutId)) activeWorkoutId = null;
+  if (changedVsRemote) saveState(); else saveStateLocalOnly();
+  if (changedVsLocal) {
+    // Dropdown caches rebuild on next render
+    const hf = document.getElementById("history-filter"); if (hf) hf.innerHTML = '<option value="">All exercises</option>';
+    const pe = document.getElementById("progress-exercise"); if (pe) pe.innerHTML = "";
+    const active = document.querySelector(".view.active");
+    showView(active ? active.id.replace("view-", "") : "today");
+    if (toastMsg) toast(toastMsg);
+  }
+  return { changedVsRemote, changedVsLocal };
+}
+
 window.__onCloudMerge = ({ direction, remote }) => {
   if (direction === "pull" && remote) {
-    // Replace local state with cloud snapshot (cloud is source of truth on sign-in)
-    state = migrate(JSON.parse(JSON.stringify(remote)));
-    activeWorkoutId = null;
-    // Force local caches to rebuild
-    saveState();
-    // Re-render whatever view is showing
-    const active = document.querySelector(".view.active");
-    const viewName = active?.id.replace("view-", "");
-    if (viewName) showView(viewName);
-    else showView("today");
-    toast("Loaded workouts from cloud");
+    const r = adoptCloudState(remote, { toastMsg: "Synced with cloud" });
+    if (!r.changedVsLocal) toast("Up to date");
   } else if (direction === "push") {
     toast("Uploaded workouts to cloud");
   }
 };
 
 window.__onCloudUpdated = (remoteState) => {
-  // Another device wrote — apply and re-render
-  state = migrate(JSON.parse(JSON.stringify(remoteState)));
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
-  const active = document.querySelector(".view.active");
-  const viewName = active?.id.replace("view-", "");
-  if (viewName) showView(viewName);
-  toast("Updated from another device");
+  adoptCloudState(remoteState, { toastMsg: "Updated from another device" });
+};
+
+window.__onSyncStatus = (s) => {
+  const wasOffline = !syncStatus.online;
+  syncStatus = { ...syncStatus, ...s };
+  updateSavedIndicator();
+  renderSyncCard();
+  if (wasOffline && syncStatus.online) toast("Back online — syncing");
 };
 
 window.__onCloudPushed = () => {
@@ -1969,6 +2371,8 @@ function renderSyncCard() {
     else avatar.style.display = "none";
     let status = "Synced";
     if (cloudLastPushed) status = `Last sync ${relativeTime(cloudLastPushed)}`;
+    if (syncStatus.pendingPush) status = "Changes waiting to sync…";
+    if (!syncStatus.online) status = "Offline — changes are saved on this device and will sync when you're back online";
     if (cloudError) status = `⚠ ${cloudError}`;
     document.getElementById("sync-status").textContent = status;
   }
@@ -2006,11 +2410,13 @@ function init() {
   }
 
   // Safety-net saves so iOS Safari can't drop unsaved state when backgrounded
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) saveState();
-  });
-  window.addEventListener("pagehide", saveState);
-  window.addEventListener("beforeunload", saveState);
+  const flushOnHide = () => {
+    saveStateLocalOnly();
+    if (window.WorkoutSync?.hasPendingPush?.()) window.WorkoutSync.forcePush();
+  };
+  document.addEventListener("visibilitychange", () => { if (document.hidden) flushOnHide(); });
+  window.addEventListener("pagehide", flushOnHide);
+  window.addEventListener("beforeunload", flushOnHide);
 
   // Accept ?gist=<id> in the URL to auto-configure on first tap
   const urlGist = new URL(location.href).searchParams.get("gist");

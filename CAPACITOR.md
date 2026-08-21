@@ -213,6 +213,50 @@ of `asleep | light | deep | rem` and skip `inBed | awake`.
 
 ---
 
+## 5b. When the npm plugin doesn't cover a HealthKit type — write a tiny one in-app
+
+`@capgo/capacitor-health` had no dietary protein/carbs/fat, so the nutrition
+reader is ~90 lines of Swift living in the app target, no npm package needed.
+Pattern:
+
+1. **`ios/App/App/NutritionPlugin.swift`** — subclass `CAPPlugin`, adopt
+   `CAPBridgedPlugin`, declare `identifier`, `jsName`, and a `pluginMethods`
+   list. Each `@objc func name(_ call: CAPPluginCall)` resolves with a
+   dictionary. (`HKStatisticsCollectionQuery` with a 1-day interval gives
+   per-day sums in one query.)
+2. **`ios/App/App/MainViewController.swift`** — subclass
+   `CAPBridgeViewController` and register the instance:
+   ```swift
+   override open func capacitorDidLoad() { bridge?.registerPluginInstance(NutritionPlugin()) }
+   ```
+3. **`Main.storyboard`** — point the view controller at it:
+   `customClass="MainViewController" customModule="App" customModuleProvider="target"`.
+4. **Add both files to the Xcode project.** Either drag them into the App group
+   in Xcode, or script the `project.pbxproj` edit (a `PBXFileReference`, a
+   `PBXBuildFile`, an entry in the App group's `children`, and one in the
+   Sources build phase `files`).
+5. Call it from JS as `window.Capacitor.Plugins.<jsName>.<method>(args)`.
+
+Same `NSHealthShareUsageDescription` + `com.apple.developer.healthkit`
+entitlement cover the new types; the permission sheet just lists more rows.
+
+## 5c. Offline-first checklist (what "works in a gym with no signal" needs)
+
+- **No CDN scripts.** Bundle the SDKs (`esbuild file.js --bundle --format=esm`)
+  and vendor UMD libraries into the repo; the native shell only ships what's in
+  `www/`. A CDN `<script>` that fails offline can silently disable sync.
+- **Firestore persistent cache** (`initializeFirestore(app, { localCache:
+  persistentLocalCache(...) })`) so writes made offline queue across relaunches.
+- **Persisted auth** (`browserLocalPersistence`) so an offline launch is still
+  signed in.
+- **Merge, don't replace.** Keep per-record `updatedAt`, tombstones for deletes,
+  and a deterministic merge; push only when the merge changed something, or two
+  devices will ping-pong forever.
+- **Flush on background**: iOS suspends JS timers, so a 2-second debounce can
+  be lost — force the pending push on `visibilitychange`/`pagehide`.
+- Set `ignoreUndefinedProperties: true` (or never emit `undefined`) — Firestore
+  rejects documents containing it.
+
 ## 6. Sync and open in Xcode
 
 ```bash
