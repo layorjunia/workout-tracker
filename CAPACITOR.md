@@ -229,23 +229,47 @@ generate a workspace; if you see one, open that instead.)
 
 ## 7. Sign & install on your phone
 
-**Prerequisite — Xcode must have your Apple ID.** Having the Apple
-Development certificate in the Keychain is *not* enough: automatic signing
-needs the account to register the App ID, attach the HealthKit capability,
-and mint the device profile. Check with:
+**The first signed build must happen inside Xcode.app.** Automatic signing
+needs your Apple ID to register the App ID, attach the HealthKit capability,
+and mint the device profile. On Xcode 26 that login lives in a store the
+command line can't read — `xcodebuild` from a terminal reports
+`No Accounts: Add a new account in Accounts settings` **even when Xcode is
+signed in**, and `defaults read com.apple.dt.Xcode …AppleIDLists` /
+`security find-generic-password -l Xcode-Token` both come back empty. Don't
+let those fool you into re-adding the account.
+
+Do the first build from the GUI (⌘B with the iPhone selected as the run
+destination), or drive Xcode with AppleScript so it's scriptable:
 
 ```bash
-defaults read com.apple.dt.Xcode DVTDeveloperAccountManagerAppleIDLists
+osascript <<'EOF'
+with timeout of 1500 seconds
+  tell application "Xcode"
+    open POSIX file "/path/to/ios/App/App.xcodeproj"
+    delay 4
+    set ws to first workspace document whose path contains "ios/App"
+    repeat until loaded of ws
+      delay 1
+    end repeat
+    set active scheme of ws to (first scheme of ws whose name is "App")
+    set active run destination of ws to (first run destination of ws whose name is "<Your iPhone name>")
+    set r to build ws
+    repeat until completed of r
+      delay 2
+    end repeat
+    return status of r as text
+  end tell
+end timeout
+EOF
 ```
 
-If `IDE.Identifiers.Prod` is an empty list, open **Xcode → Settings → Accounts
-→ +** and sign in with the Apple ID on your developer team. Without it, every
-build fails with `No Accounts: Add a new account in Accounts settings`.
+(Variable names matter: `rd`, `d` and a few other short names collide with
+Xcode's dictionary and give "Expected variable name or property".)
 
-Then either use the Xcode UI — **App** target → **Signing & Capabilities** →
-pick your **Team**, confirm **Automatically manage signing** and that
-**HealthKit** is listed, select your iPhone in the top bar, **⌘R** — or do it
-headless from the terminal, which is what I do so the build is repeatable:
+That one build writes `iOS Team Provisioning Profile: <bundle id>` to
+`~/Library/Developer/Xcode/UserData/Provisioning Profiles/`. From then on
+plain `xcodebuild` signs against the on-disk profile without touching the
+account, so the headless loop below works for every subsequent deploy:
 
 ```bash
 # Bake the team into the project once (both Debug and Release blocks):
@@ -254,18 +278,30 @@ headless from the terminal, which is what I do so the build is repeatable:
 # Find your phone's destination id
 xcodebuild -project ios/App/App.xcodeproj -scheme App -showdestinations | grep "platform:iOS,"
 
-# Build, signing automatically (registers the device + App ID as needed)
+# Build Release, signing against the profile Xcode already minted
 xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
-  -destination 'id=<DEVICE_ID>' -derivedDataPath build \
-  -allowProvisioningUpdates -allowProvisioningDeviceRegistration build
+  -destination 'id=<DEVICE_ID>' -derivedDataPath build build
 
-# Install and launch over USB/Wi-Fi
-xcrun devicectl device install app --device <DEVICE_ID> build/Build/Products/Release-iphoneos/App.app
-xcrun devicectl device process launch --device <DEVICE_ID> com.<you>.<appname>
+# devicectl wants the CoreDevice UUID (different from the xcodebuild id above)
+xcrun devicectl list devices
+xcrun devicectl device install app --device <COREDEVICE_UUID> build/Build/Products/Release-iphoneos/App.app
+xcrun devicectl device process launch --device <COREDEVICE_UUID> com.<you>.<appname>
 ```
+
+In this repo those are wrapped as `npm run ios:deploy` (build + install +
+launch) — edit the two device IDs in `package.json` for a different phone.
 
 Plug your iPhone in via USB the first time — after that Xcode remembers it
 wirelessly on the same network.
+
+**Sanity-check the artifact before installing** — this catches a missing
+capability or an unregistered device without a round-trip to the phone:
+
+```bash
+codesign -d --entitlements :- build/Build/Products/Release-iphoneos/App.app | grep healthkit
+security cms -D -i build/Build/Products/Release-iphoneos/App.app/embedded.mobileprovision \
+  | plutil -extract ProvisionedDevices json -o - -
+```
 
 First launch on-device:
 - iOS shows the "Trust This Developer" prompt if it's the first personal-team
