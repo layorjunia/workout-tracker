@@ -240,6 +240,27 @@ Pattern:
 Same `NSHealthShareUsageDescription` + `com.apple.developer.healthkit`
 entitlement cover the new types; the permission sheet just lists more rows.
 
+## 5a′. Firebase Auth hangs forever in the native shell — fix
+
+Symptom: `signInWithEmailAndPassword` (or any auth call) never resolves inside
+the Capacitor app while the identical code works in Safari/Chrome. Cause:
+`getAuth()` installs `browserPopupRedirectResolver`, and on an iPhone
+user-agent Firebase *proactively* loads the auth iframe from `authDomain` and
+awaits a postMessage handshake. Under `capacitor://localhost` that handshake
+never completes, and every auth call queues behind it.
+
+```js
+// instead of getAuth(app):
+const auth = initializeAuth(app, {
+  persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+});
+// popup flows (web only) pass the resolver explicitly:
+signInWithPopup(auth, provider, browserPopupRedirectResolver);
+```
+
+Reproduce/verify in the iOS Simulator — it has the same WKWebView + custom
+scheme as the device and needs no HealthKit.
+
 ## 5c. Offline-first checklist (what "works in a gym with no signal" needs)
 
 - **No CDN scripts.** Bundle the SDKs (`esbuild file.js --bundle --format=esm`)

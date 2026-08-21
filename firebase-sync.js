@@ -19,10 +19,10 @@
 
 import { initializeApp } from "firebase/app";
 import {
-  getAuth, signOut, onAuthStateChanged,
+  initializeAuth, signOut, onAuthStateChanged,
   signInWithEmailAndPassword, createUserWithEmailAndPassword,
-  GoogleAuthProvider, signInWithPopup,
-  browserLocalPersistence, setPersistence,
+  GoogleAuthProvider, signInWithPopup, browserPopupRedirectResolver,
+  indexedDBLocalPersistence, browserLocalPersistence,
 } from "firebase/auth";
 import {
   initializeFirestore, persistentLocalCache, persistentSingleTabManager,
@@ -40,8 +40,14 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-setPersistence(auth, browserLocalPersistence).catch(() => {});
+// initializeAuth WITHOUT a popupRedirectResolver. getAuth() would attach
+// browserPopupRedirectResolver, which on an iPhone user-agent proactively loads
+// the auth iframe from authDomain and awaits a handshake that never completes
+// under Capacitor's capacitor://localhost origin — so signInWithEmailAndPassword
+// hangs forever in the native app. Email/PIN doesn't need the resolver at all.
+const auth = initializeAuth(app, {
+  persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+});
 
 // Persistent local cache: queued writes + cached reads survive offline periods
 // and relaunches. Single-tab manager is fine (native app / one PWA tab).
@@ -229,9 +235,10 @@ async function signInWithPIN(identifier, pin) {
 }
 
 async function signInGoogle() {
+  // Web only — needs the popup resolver we deliberately don't install globally.
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
-  await signInWithPopup(auth, provider);
+  await signInWithPopup(auth, provider, browserPopupRedirectResolver);
 }
 
 async function signOutOfApp() {

@@ -2060,7 +2060,8 @@ function bindEvents() {
     btn.disabled = true;
     btn.textContent = "Signing in…";
     try {
-      const res = await window.WorkoutSync.signInWithPIN(identifier, pin);
+      const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("Sign-in timed out — check your connection and try again")), ms))]);
+      const res = await withTimeout(window.WorkoutSync.signInWithPIN(identifier, pin), 25000);
       pinInput.value = "";
       if (res.created) toast(`New account created for "${identifier}"`);
       // Native app: kick off HealthKit (first run shows the iOS permission sheet)
@@ -2364,8 +2365,12 @@ function renderSyncCard() {
   outEl.classList.toggle("hidden", signedIn);
   inEl.classList.toggle("hidden", !signedIn);
   if (signedIn) {
-    document.getElementById("sync-name").textContent = cloudUser.name || cloudUser.email;
-    document.getElementById("sync-email").textContent = cloudUser.email;
+    // PIN accounts use a synthetic "<name>@workout-tracker.local" address — show the name, not the plumbing.
+    const email = cloudUser.email || "";
+    const isPin = email.endsWith("@workout-tracker.local");
+    const friendly = cloudUser.name || (isPin ? email.split("@")[0] : email);
+    document.getElementById("sync-name").textContent = friendly;
+    document.getElementById("sync-email").textContent = isPin ? "Signed in · syncing to cloud" : email;
     const avatar = document.getElementById("sync-avatar");
     if (cloudUser.photoURL) avatar.src = cloudUser.photoURL;
     else avatar.style.display = "none";
