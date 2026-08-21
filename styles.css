@@ -649,6 +649,12 @@ select {
 
 .hidden { display: none !important; }
 
+/* Native (Capacitor) vs. browser affordances. html.native is set at boot. */
+.native-only { display: none; }
+html.native .native-only { display: block; }
+html.native .web-only { display: none !important; }
+html.native button.native-only { display: inline-flex; }
+
 /* iOS install prompt ================================== */
 .install-banner {
   position: fixed;

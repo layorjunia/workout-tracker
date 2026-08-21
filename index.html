@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <title>Workout Tracker</title>
-<link rel="stylesheet" href="styles.css?v=16">
+<link rel="stylesheet" href="styles.css?v=18">
 </head>
 <body>
 
@@ -193,7 +193,14 @@
     <div class="card">
       <h3>Apple Health</h3>
       <div id="health-unconfigured" class="muted small">
-        <p>No Health data synced yet. Build the one-time iOS Shortcut (~15 min) that POSTs your Apple Health metrics to this app four times a day. Setup steps are in the <strong>README</strong> under <em>Apple Health via Shortcut</em>.</p>
+        <!-- Browser / PWA -->
+        <p class="web-only">No Health data synced yet. Install the iOS app to connect Apple Health directly, or build the one-time iOS Shortcut described in the <strong>README</strong>.</p>
+        <!-- Native iOS app -->
+        <div class="native-only">
+          <p>Connect Apple Health to see resting heart rate, HRV, sleep, steps, calories, weight, and body fat next to your workouts. You must be signed in to Cloud Sync first.</p>
+          <button class="btn btn-primary" id="btn-health-connect" style="width:100%">Connect Apple Health</button>
+          <div class="muted small" id="health-connect-status" style="margin-top:8px;min-height:16px"></div>
+        </div>
       </div>
       <div id="health-snapshot" class="hidden">
         <div class="health-group">
@@ -230,7 +237,8 @@
           </div>
         </div>
         <div class="muted small" id="h-updated" style="margin-top:10px"></div>
-        <button class="btn btn-secondary" id="btn-health-refresh" style="margin-top:10px;width:100%">Refresh from Gist</button>
+        <button class="btn btn-secondary web-only" id="btn-health-refresh" style="margin-top:10px;width:100%">Refresh from Gist</button>
+        <button class="btn btn-secondary native-only" id="btn-health-sync-now" style="margin-top:10px;width:100%">Sync Apple Health now</button>
       </div>
     </div>
 
@@ -481,8 +489,8 @@
 </nav>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="app.js?v=17"></script>
-<script type="module" src="firebase-sync.js?v=17"></script>
-<script src="capacitor-health.js?v=17"></script>
+<script src="app.js?v=18"></script>
+<script type="module" src="firebase-sync.js?v=18"></script>
+<script src="capacitor-health.js?v=18"></script>
 </body>
 </html>

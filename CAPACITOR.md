@@ -131,11 +131,16 @@ they review builds.
 <dict>
   <key>com.apple.developer.healthkit</key>
   <true/>
-  <key>com.apple.developer.healthkit.access</key>
-  <array/>
 </dict>
 </plist>
 ```
+
+> **Do not add `com.apple.developer.healthkit.access`.** Even as an empty
+> array, Xcode treats it as the *Clinical / Verifiable Health Records*
+> sub-capability, which Apple has to approve per team. Automatic signing
+> then fails with "Provisioning profile doesn't include the HealthKit
+> Access (Verifiable Health Records) capability". Plain HealthKit reads
+> only need the single boolean above.
 
 Point the Xcode project at that entitlements file. Edit
 `ios/App/App.xcodeproj/project.pbxproj` and add this line inside **both** the
@@ -193,35 +198,74 @@ Include it in `index.html`:
 
 Same file works on the web — the `isNativePlatform` guard early-returns.
 
+**Where to send the data:** if your web app already syncs its state to a
+backend (this one pushes to Firestore on every save), write the HealthKit
+values into that same local state and let the existing sync carry them.
+Don't bolt on a separate upload endpoint for native — it means caching
+credentials on the device and creates a race between the two writers. The
+native layer's only job is *read HealthKit → hand JS a plain object*.
+
+Unit gotchas from `@capgo/capacitor-health` on iOS: `percent` types
+(`oxygenSaturation`, `bodyFat`) come back as **0–1 fractions**, `weight` is
+**kilograms**, `calories` is `activeEnergyBurned` in kcal, and `sleep` is a
+category type — sum the `startDate→endDate` spans whose `sleepState` is one
+of `asleep | light | deep | rem` and skip `inBed | awake`.
+
 ---
 
 ## 6. Sync and open in Xcode
 
 ```bash
 npm run cap:sync   # copies www/ → ios/App/App/public/ and refreshes plugins
-open ios/App/App.xcworkspace
+open ios/App/App.xcodeproj
 ```
 
-**Never open `App.xcodeproj` directly** — Capacitor uses the workspace so
-Swift Package Manager plugins get pulled in.
+Capacitor 8 resolves plugins through **Swift Package Manager**, so there is
+no `.xcworkspace` — the `.xcodeproj` is the thing to open. (Only
+CocoaPods-era projects, Capacitor ≤ 5 or plugins without a `Package.swift`,
+generate a workspace; if you see one, open that instead.)
 
 ---
 
 ## 7. Sign & install on your phone
 
-In Xcode, select the **App** target → **Signing & Capabilities**:
+**Prerequisite — Xcode must have your Apple ID.** Having the Apple
+Development certificate in the Keychain is *not* enough: automatic signing
+needs the account to register the App ID, attach the HealthKit capability,
+and mint the device profile. Check with:
 
-1. **Team** — pick your Apple Developer team from the dropdown
-2. Verify **Automatically manage signing** is ticked
-3. If Xcode complains "no matching provisioning profile", click **Try Again**
-   — it'll create the profile for you against the bundle ID from
-   `capacitor.config.json`.
+```bash
+defaults read com.apple.dt.Xcode DVTDeveloperAccountManagerAppleIDLists
+```
 
-Confirm the **HealthKit** capability is listed. If not: **+ Capability → HealthKit**.
+If `IDE.Identifiers.Prod` is an empty list, open **Xcode → Settings → Accounts
+→ +** and sign in with the Apple ID on your developer team. Without it, every
+build fails with `No Accounts: Add a new account in Accounts settings`.
 
-Plug your iPhone in via USB (first time only — after that Xcode will remember
-it wirelessly if it's on the same network). Select it as the run destination
-in the top bar, then hit **⌘R**.
+Then either use the Xcode UI — **App** target → **Signing & Capabilities** →
+pick your **Team**, confirm **Automatically manage signing** and that
+**HealthKit** is listed, select your iPhone in the top bar, **⌘R** — or do it
+headless from the terminal, which is what I do so the build is repeatable:
+
+```bash
+# Bake the team into the project once (both Debug and Release blocks):
+#   DEVELOPMENT_TEAM = <TEAMID>;   next to CODE_SIGN_STYLE = Automatic;
+
+# Find your phone's destination id
+xcodebuild -project ios/App/App.xcodeproj -scheme App -showdestinations | grep "platform:iOS,"
+
+# Build, signing automatically (registers the device + App ID as needed)
+xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+  -destination 'id=<DEVICE_ID>' -derivedDataPath build \
+  -allowProvisioningUpdates -allowProvisioningDeviceRegistration build
+
+# Install and launch over USB/Wi-Fi
+xcrun devicectl device install app --device <DEVICE_ID> build/Build/Products/Release-iphoneos/App.app
+xcrun devicectl device process launch --device <DEVICE_ID> com.<you>.<appname>
+```
+
+Plug your iPhone in via USB the first time — after that Xcode remembers it
+wirelessly on the same network.
 
 First launch on-device:
 - iOS shows the "Trust This Developer" prompt if it's the first personal-team

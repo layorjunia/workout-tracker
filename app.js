@@ -1727,10 +1727,8 @@ function bindEvents() {
       const res = await window.WorkoutSync.signInWithPIN(identifier, pin);
       pinInput.value = "";
       if (res.created) toast(`New account created for "${identifier}"`);
-      // Hand credentials to the native HealthKit sync (no-op in the browser)
-      if (window.WorkoutNativeHealth?.isNative) {
-        window.WorkoutNativeHealth.setCredentials(identifier, pin);
-      }
+      // Native app: kick off HealthKit (first run shows the iOS permission sheet)
+      window.WorkoutNativeHealth?.start?.();
     } catch (e) {
       errEl.textContent = e.message || String(e);
     } finally {
@@ -1741,7 +1739,7 @@ function bindEvents() {
   $("#btn-sync-signout").onclick = async () => {
     if (!confirm("Sign out? Your workouts stay in the cloud. This browser will show empty defaults until you sign in again.")) return;
     await window.WorkoutSync?.signOut?.();
-    window.WorkoutNativeHealth?.clearCredentials?.();
+    window.WorkoutNativeHealth?.stop?.();
     // Wipe local storage of user data so no data leaks to the next opener of this browser
     localStorage.removeItem(STORAGE_KEY);
     activeWorkoutId = null;
@@ -1806,6 +1804,34 @@ function bindEvents() {
   });
   $("#btn-health-refresh").onclick = () => syncHealth(true);
 
+  // Native HealthKit: first tap triggers the iOS permission sheet, then syncs.
+  const runNativeHealthSync = async (btn, statusEl) => {
+    if (!window.WorkoutNativeHealth?.isNative) return;
+    if (!cloudUser) {
+      if (statusEl) statusEl.textContent = "Sign in under Settings → Cloud Sync first.";
+      toast("Sign in first");
+      return;
+    }
+    const label = btn.textContent;
+    btn.disabled = true; btn.textContent = "Syncing…";
+    if (statusEl) statusEl.textContent = "";
+    try {
+      await window.WorkoutNativeHealth.syncNow();   // merges into state + saveState()
+      renderHealth();
+      const got = state.health?.data && Object.keys(state.health.data).length > 1;
+      if (got) toast("Apple Health synced");
+      else if (statusEl) statusEl.textContent = "No data came back. Check Settings → Health → Data Access & Devices → Workout Tracker.";
+    } catch (e) {
+      if (statusEl) statusEl.textContent = "⚠ " + (e?.message || e);
+    } finally {
+      btn.disabled = false; btn.textContent = label;
+    }
+  };
+  const connectBtn = $("#btn-health-connect");
+  if (connectBtn) connectBtn.onclick = () => runNativeHealthSync(connectBtn, $("#health-connect-status"));
+  const syncNowBtn = $("#btn-health-sync-now");
+  if (syncNowBtn) syncNowBtn.onclick = () => runNativeHealthSync(syncNowBtn, null);
+
   $("#btn-export").onclick = exportJSON;
   $("#btn-import").onclick = () => $("#import-file").click();
   $("#import-file").onchange = e => { if (e.target.files[0]) importJSON(e.target.files[0]); };
@@ -1863,6 +1889,19 @@ function maybeShowInstallBanner() {
   const banner = document.getElementById("install-banner");
   if (banner) banner.classList.remove("hidden");
 }
+
+/* ───────── Native HealthKit bridge (see capacitor-health.js) ───────── */
+// Called by the native shell with freshly read HealthKit metrics. Merges into
+// state.health.data; saveState() pushes to Firestore via the normal sync path.
+window.__applyNativeHealth = (metrics) => {
+  if (!metrics || typeof metrics !== "object") return;
+  state.health = state.health || { lastFetch: null, data: null, lastError: null };
+  state.health.data = { ...(state.health.data || {}), ...metrics, updatedAt: new Date().toISOString() };
+  state.health.lastFetch = Date.now();
+  state.health.lastError = null;
+  saveState();
+  if (document.querySelector("#view-health.active")) renderHealth();
+};
 
 /* ───────── Cloud sync bridge (Firebase — see firebase-sync.js) ───────── */
 let cloudUser = null;
@@ -1936,12 +1975,21 @@ function renderSyncCard() {
 }
 setInterval(renderSyncCard, 15000);
 
+// True when running inside the Capacitor iOS shell (vs. a browser / PWA).
+const isNativeApp = () => !!(window.Capacitor?.isNativePlatform?.());
+
 function init() {
   applyTheme();
   bindEvents();
-  registerServiceWorker();
-  requestPersistentStorage();
-  maybeShowInstallBanner();
+  if (!isNativeApp()) {
+    // Browser-only: PWA plumbing. Inside the native app the OS owns install,
+    // offline caching, and storage persistence, so skip all three.
+    registerServiceWorker();
+    requestPersistentStorage();
+    maybeShowInstallBanner();
+  } else {
+    document.documentElement.classList.add("native");
+  }
 
   // Reset inactivity timer on any user interaction
   ["input", "click", "touchstart"].forEach(ev => {

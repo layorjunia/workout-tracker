@@ -1,198 +1,141 @@
-// Native HealthKit sync — only runs when the app is running inside the
-// Capacitor iOS shell. In the browser (Vercel / GitHub Pages) this file is
-// still loaded but everything is a no-op, so the same web build works
-// everywhere.
+// Native HealthKit sync — only active inside the Capacitor iOS shell. In a
+// browser this file loads but every code path is a no-op, so one web build
+// serves Vercel, GitHub Pages, and the native app.
 //
-// Data flow:
-//   1. On first launch after the user signs in, request HealthKit permissions.
-//   2. Read the 8 metrics the app cares about via @capgo/capacitor-health.
-//   3. POST them to /api/health with the user's name + PIN so they land in
-//      the same Firestore doc the browser reads.
-//   4. Repeat on app foreground and on a rough 30-min timer while open.
+// Data flow (native only):
+//   1. First sync after sign-in triggers the iOS HealthKit permission sheet.
+//   2. Read the metrics the app cares about via @capgo/capacitor-health.
+//   3. Hand them to app.js (window.__applyNativeHealth), which merges them
+//      into state.health.data and calls saveState() — the existing Firestore
+//      push then carries them to every other device. No separate endpoint,
+//      no credentials cached on the phone.
+//   4. Repeat on app foreground and every 30 min while the app is open.
 
 (function () {
-  const isNative = () => !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
-  if (!isNative()) return; // browser build — nothing to do
+  const isNative = () => !!(window.Capacitor?.isNativePlatform?.());
+  if (!isNative()) return;
 
   const READ_TYPES = [
     "restingHeartRate", "heartRateVariability", "oxygenSaturation",
     "sleep", "steps", "calories", "weight", "bodyFat",
   ];
-
-  const API_URL = "https://layorjunia-workouts.vercel.app/api/health";
-  const CRED_KEY = "workout-tracker:healthSyncCreds";
   const AUTH_KEY = "workout-tracker:healthKitAuthed";
+  const SYNC_INTERVAL_MS = 30 * 60 * 1000;
   let syncTimer = null;
+  let syncing = false;
 
-  function health() {
-    return window.Capacitor?.Plugins?.Health || null;
+  const health = () => window.Capacitor?.Plugins?.Health || null;
+
+  async function ensureAuthorized() {
+    const h = health();
+    if (!h) throw new Error("Health plugin not available");
+    if (localStorage.getItem(AUTH_KEY) === "1") return;
+    // Shows the iOS permission sheet the first time; no-op afterwards.
+    await h.requestAuthorization({ read: READ_TYPES, write: [] });
+    localStorage.setItem(AUTH_KEY, "1");
   }
 
-  async function requestPermissionsOnce() {
+  const iso = (ms) => new Date(ms).toISOString();
+  const now = () => Date.now();
+  const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString(); };
+
+  async function read(dataType, startDate, limit) {
     const h = health();
-    if (!h) return false;
-    if (localStorage.getItem(AUTH_KEY) === "1") return true;
     try {
-      await h.requestAuthorization({ read: READ_TYPES, write: [] });
-      localStorage.setItem(AUTH_KEY, "1");
-      return true;
+      const { samples } = await h.readSamples({ dataType, startDate, endDate: iso(now()), limit });
+      return samples || [];
     } catch (e) {
-      console.warn("HealthKit auth failed:", e);
-      return false;
+      console.warn(`[health] read ${dataType} failed:`, e?.message || e);
+      return [];
     }
   }
 
-  function startOfToday() {
-    const d = new Date(); d.setHours(0, 0, 0, 0);
-    return d.toISOString();
-  }
-  function twentyFourHoursAgo() {
-    return new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  }
-
-  async function latestValue(dataType, startIso) {
-    const h = health();
-    if (!h) return null;
-    try {
-      const { samples } = await h.readSamples({
-        dataType,
-        startDate: startIso,
-        endDate: new Date().toISOString(),
-        limit: 1,
-      });
-      if (!samples || samples.length === 0) return null;
-      // Return the most recent sample's value
-      const sorted = samples.slice().sort((a, b) => (b.endDate || b.startDate).localeCompare(a.endDate || a.startDate));
-      return sorted[0].value;
-    } catch (e) {
-      console.warn(`readSamples(${dataType}) failed:`, e);
-      return null;
-    }
+  async function latest(dataType, sinceMs) {
+    const samples = await read(dataType, iso(now() - sinceMs), 50);
+    if (!samples.length) return null;
+    samples.sort((a, b) => (b.endDate || b.startDate).localeCompare(a.endDate || a.startDate));
+    return samples[0].value;
   }
 
-  async function sumSince(dataType, startIso) {
-    const h = health();
-    if (!h) return null;
-    try {
-      const { samples } = await h.readSamples({
-        dataType,
-        startDate: startIso,
-        endDate: new Date().toISOString(),
-        limit: 10000,
-      });
-      if (!samples || samples.length === 0) return null;
-      return samples.reduce((acc, s) => acc + (s.value || 0), 0);
-    } catch (e) {
-      console.warn(`sumSince(${dataType}) failed:`, e);
-      return null;
-    }
+  async function sumToday(dataType) {
+    const samples = await read(dataType, startOfToday(), 10000);
+    if (!samples.length) return null;
+    return samples.reduce((acc, s) => acc + (Number(s.value) || 0), 0);
   }
 
-  async function totalSleepHours(startIso) {
-    const h = health();
-    if (!h) return null;
-    try {
-      const { samples } = await h.readSamples({
-        dataType: "sleep",
-        startDate: startIso,
-        endDate: new Date().toISOString(),
-        limit: 10000,
-      });
-      if (!samples || samples.length === 0) return null;
-      // Sum "asleep" durations. Fall back to total range if no state info.
-      let mins = 0;
-      for (const s of samples) {
-        if (s.sleepState && s.sleepState !== "asleep" && s.sleepState !== "rem" && s.sleepState !== "deep" && s.sleepState !== "light") continue;
-        const start = new Date(s.startDate).getTime();
-        const end = new Date(s.endDate).getTime();
-        if (Number.isFinite(start) && Number.isFinite(end)) mins += Math.max(0, (end - start) / 60000);
-      }
-      return mins / 60;
-    } catch (e) {
-      console.warn("sleep read failed:", e);
-      return null;
+  // Sum asleep-phase durations over the last 24h. Excludes inBed/awake.
+  async function sleepHoursLastNight() {
+    const samples = await read("sleep", iso(now() - 24 * 3600 * 1000), 10000);
+    if (!samples.length) return null;
+    const ASLEEP = new Set(["asleep", "light", "deep", "rem"]);
+    let mins = 0;
+    for (const s of samples) {
+      if (s.sleepState && !ASLEEP.has(s.sleepState)) continue;
+      const a = Date.parse(s.startDate), b = Date.parse(s.endDate);
+      if (Number.isFinite(a) && Number.isFinite(b) && b > a) mins += (b - a) / 60000;
     }
+    return mins > 0 ? mins / 60 : null;
   }
+
+  const DAY = 24 * 3600 * 1000;
 
   async function collectMetrics() {
-    const dayStart = startOfToday();
-    const yesterday = twentyFourHoursAgo();
-    const [
-      restingHR, hrv, bloodOxygen,
-      stepsToday, activeEnergyToday, weight, bodyFatPct,
-      sleepHours,
-    ] = await Promise.all([
-      latestValue("restingHeartRate", yesterday),
-      latestValue("heartRateVariability", yesterday),
-      latestValue("oxygenSaturation", yesterday),
-      sumSince("steps", dayStart),
-      sumSince("calories", dayStart),
-      latestValue("weight", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()),
-      latestValue("bodyFat", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()),
-      totalSleepHours(yesterday),
+    const [restingHR, hrv, spo2, steps, kcal, kg, fat, sleep] = await Promise.all([
+      latest("restingHeartRate", 2 * DAY),
+      latest("heartRateVariability", 2 * DAY),
+      latest("oxygenSaturation", 2 * DAY),
+      sumToday("steps"),
+      sumToday("calories"),
+      latest("weight", 60 * DAY),
+      latest("bodyFat", 60 * DAY),
+      sleepHoursLastNight(),
     ]);
-
+    const r1 = (n) => Math.round(n * 10) / 10;
     const out = {};
-    if (restingHR       != null) out.restingHR        = Math.round(restingHR);
-    if (hrv             != null) out.hrv              = Math.round(hrv);
-    if (bloodOxygen     != null) out.bloodOxygen      = Math.round(bloodOxygen * 100); // Health returns 0..1
-    if (stepsToday      != null) out.stepsToday       = Math.round(stepsToday);
-    if (activeEnergyToday != null) out.activeEnergyToday = Math.round(activeEnergyToday);
-    if (weight          != null) out.weightLbs        = Math.round(weight * 2.2046226218 * 10) / 10; // kg → lb
-    if (bodyFatPct      != null) out.bodyFatPct       = Math.round(bodyFatPct * 100 * 10) / 10;    // fraction → %
-    if (sleepHours      != null) out.sleepHours       = Math.round(sleepHours * 10) / 10;
+    if (restingHR != null) out.restingHR         = Math.round(restingHR);
+    if (hrv       != null) out.hrv               = Math.round(hrv);
+    if (spo2      != null) out.bloodOxygen       = Math.round(spo2 * 100);      // HK percent = 0..1
+    if (steps     != null) out.stepsToday        = Math.round(steps);
+    if (kcal      != null) out.activeEnergyToday = Math.round(kcal);
+    if (kg        != null) out.weightLbs         = r1(kg * 2.2046226218);       // kg → lb
+    if (fat       != null) out.bodyFatPct        = r1(fat * 100);               // fraction → %
+    if (sleep     != null) out.sleepHours        = r1(sleep);
     return out;
   }
 
-  async function pushToApi(metrics) {
-    const raw = localStorage.getItem(CRED_KEY);
-    if (!raw) return { skipped: "no_creds" };
-    const { name, pin } = JSON.parse(raw);
-    if (!name || !pin) return { skipped: "no_creds" };
-    const res = await fetch(API_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, pin, ...metrics }),
-    });
-    return { status: res.status, body: await res.json().catch(() => ({})) };
+  async function syncNow() {
+    if (syncing) return;
+    syncing = true;
+    try {
+      await ensureAuthorized();
+      const metrics = await collectMetrics();
+      if (Object.keys(metrics).length === 0) {
+        console.log("[health] no samples returned (permissions denied, or no Watch data yet)");
+        return;
+      }
+      window.__applyNativeHealth?.(metrics);
+      console.log("[health] applied", Object.keys(metrics).join(", "));
+    } finally {
+      syncing = false;
+    }
   }
 
-  async function runSync() {
-    const ok = await requestPermissionsOnce();
-    if (!ok) return;
-    const metrics = await collectMetrics();
-    if (Object.keys(metrics).length === 0) return;
-    const result = await pushToApi(metrics);
-    console.log("[health] pushed", Object.keys(metrics), "→", result);
+  function start() {
+    syncNow().catch((e) => console.warn("[health] sync failed:", e?.message || e));
+    if (syncTimer) clearInterval(syncTimer);
+    syncTimer = setInterval(() => syncNow().catch(() => {}), SYNC_INTERVAL_MS);
+  }
+  function stop() {
+    if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
   }
 
-  // Called from app.js after successful sign-in, so we know we have creds.
-  window.WorkoutNativeHealth = {
-    // Cache credentials so the timer / foreground events can re-sync silently.
-    // Called from app.js right after a successful sign-in.
-    setCredentials(name, pin) {
-      localStorage.setItem(CRED_KEY, JSON.stringify({ name, pin }));
-      runSync().catch(e => console.warn("health sync error:", e));
-      if (syncTimer) clearInterval(syncTimer);
-      syncTimer = setInterval(() => runSync().catch(() => {}), 30 * 60 * 1000);
-    },
-    clearCredentials() {
-      localStorage.removeItem(CRED_KEY);
-      localStorage.removeItem(AUTH_KEY);
-      if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
-    },
-    async syncNow() { await runSync(); },
-    isNative: true,
-  };
+  window.WorkoutNativeHealth = { isNative: true, syncNow, start, stop };
 
-  // Re-sync when the app comes back to the foreground.
+  // Re-sync when the app returns to the foreground (after permission granted once).
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && localStorage.getItem(CRED_KEY)) runSync().catch(() => {});
+    if (!document.hidden && localStorage.getItem(AUTH_KEY) === "1") syncNow().catch(() => {});
   });
 
-  // If creds are already stored (rehydration after app relaunch), kick off a sync.
-  if (localStorage.getItem(CRED_KEY)) {
-    runSync().catch(() => {});
-    syncTimer = setInterval(() => runSync().catch(() => {}), 30 * 60 * 1000);
-  }
+  // Relaunch: if Health was already authorized, resume the periodic sync.
+  if (localStorage.getItem(AUTH_KEY) === "1") start();
 })();
