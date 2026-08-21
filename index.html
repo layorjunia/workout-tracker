@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <title>Workout Tracker</title>
-<link rel="stylesheet" href="styles.css?v=21">
+<link rel="stylesheet" href="styles.css?v=22">
 </head>
 <body>
 
@@ -112,29 +112,73 @@
     <div class="topbar-title">Progress</div>
   </header>
   <div class="container">
-
-    <div class="card">
-      <h3>This week</h3>
-      <div id="this-week-tiles" class="week-tiles"></div>
-      <div class="muted small" id="this-week-range"></div>
+    <div class="segmented" id="progress-seg" role="tablist">
+      <button data-seg="overview" class="active" role="tab">Overview</button>
+      <button data-seg="exercises" role="tab">Exercises</button>
+      <button data-seg="records" role="tab">Records</button>
+      <button data-seg="insights" role="tab">Insights</button>
     </div>
 
-    <div class="card">
-      <h3>Weekly volume trend</h3>
-      <div class="chart-wrap"><canvas id="chart-total-volume"></canvas></div>
+    <!-- Overview -->
+    <div class="seg-panel" id="seg-overview">
+      <div class="card">
+        <h3>This week <span class="muted small" id="this-week-range" style="font-weight:400;text-transform:none;letter-spacing:0"></span></h3>
+        <div id="this-week-tiles" class="week-tiles"></div>
+      </div>
+      <div class="card">
+        <h3>Sessions vs. your last time</h3>
+        <p class="muted small">Each exercise is compared to the previous session you did it — not to last week's total.</p>
+        <div id="session-compare"></div>
+      </div>
+      <div class="card">
+        <h3>Volume by split <span class="muted small" style="font-weight:400;text-transform:none;letter-spacing:0">last 8 weeks</span></h3>
+        <div id="split-charts" class="split-charts"></div>
+      </div>
+      <div class="card">
+        <h3>Consistency</h3>
+        <div id="consistency"></div>
+      </div>
     </div>
 
-    <div class="card">
-      <h3>Personal records <span class="muted small" style="font-weight: 400;">estimated 1RM</span></h3>
-      <div id="pr-list" class="pr-list"></div>
+    <!-- Exercises -->
+    <div class="seg-panel hidden" id="seg-exercises">
+      <div class="card">
+        <h3>Progression <span class="muted small" style="font-weight:400;text-transform:none;letter-spacing:0">4-week trend</span></h3>
+        <div id="progression-list" class="progression-list"></div>
+      </div>
+      <div class="card">
+        <h3>Exercise detail</h3>
+        <select id="progress-exercise"></select>
+        <div class="metrics" id="progress-metrics"></div>
+        <div class="chart-wrap"><canvas id="chart-exercise-1rm"></canvas></div>
+        <div class="chart-wrap"><canvas id="chart-exercise-volume"></canvas></div>
+        <div id="exercise-sessions" class="exercise-sessions"></div>
+      </div>
     </div>
 
-    <div class="card">
-      <h3>Per-exercise history</h3>
-      <select id="progress-exercise"></select>
-      <div class="metrics" id="progress-metrics"></div>
-      <div class="chart-wrap"><canvas id="chart-exercise-volume"></canvas></div>
-      <div class="chart-wrap"><canvas id="chart-exercise-1rm"></canvas></div>
+    <!-- Records -->
+    <div class="seg-panel hidden" id="seg-records">
+      <div class="card">
+        <h3>Recent PRs</h3>
+        <div id="pr-timeline" class="pr-timeline"></div>
+      </div>
+      <div class="card">
+        <h3>Personal records <span class="muted small" style="font-weight:400;text-transform:none;letter-spacing:0">per exercise</span></h3>
+        <div id="pr-list" class="pr-list"></div>
+      </div>
+    </div>
+
+    <!-- Insights -->
+    <div class="seg-panel hidden" id="seg-insights">
+      <div class="card">
+        <h3>What lines up with good sessions</h3>
+        <p class="muted small" id="insights-intro"></p>
+        <div id="insights-list" class="insights-list"></div>
+      </div>
+      <div class="card">
+        <h3>Best sessions</h3>
+        <div id="best-sessions"></div>
+      </div>
     </div>
 
   </div>
@@ -545,9 +589,10 @@
   </button>
 </nav>
 
-<script src="vendor/chart.umd.js?v=21"></script>
-<script src="app.js?v=21"></script>
-<script type="module" src="vendor/firebase-sync.bundle.js?v=21"></script>
-<script src="capacitor-health.js?v=21"></script>
+<script src="vendor/chart.umd.js?v=22"></script>
+<script src="app.js?v=22"></script>
+<script src="analytics.js?v=22"></script>
+<script type="module" src="vendor/firebase-sync.bundle.js?v=22"></script>
+<script src="capacitor-health.js?v=22"></script>
 </body>
 </html>

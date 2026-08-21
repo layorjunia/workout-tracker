@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "build:vendor": "mkdir -p vendor && esbuild firebase-sync.js --bundle --format=esm --minify --target=es2020,safari16 --outfile=vendor/firebase-sync.bundle.js && cp node_modules/chart.js/dist/chart.umd.js vendor/chart.umd.js",
-    "build:web": "npm run build:vendor && rm -rf www && mkdir -p www/vendor && cp index.html app.js styles.css capacitor-health.js manifest.json service-worker.js icon-180.png icon-192.png icon-512.png www/ && cp vendor/*.js www/vendor/",
+    "build:web": "npm run build:vendor && rm -rf www && mkdir -p www/vendor && cp index.html app.js analytics.js styles.css capacitor-health.js manifest.json service-worker.js icon-180.png icon-192.png icon-512.png www/ && cp vendor/*.js www/vendor/",
     "cap:sync": "npm run build:web && npx cap sync ios",
     "cap:open": "npm run cap:sync && npx cap open ios",
     "ios:build": "npm run cap:sync && cd ios/App && xcodebuild -project App.xcodeproj -scheme App -configuration Release -destination 'id=00008150-000548D13EDB401C' -derivedDataPath ../build build | grep -E 'error:|BUILD (SUCCEEDED|FAILED)'",

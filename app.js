@@ -1297,7 +1297,9 @@ function renderHistory() {
 }
 
 /* ───────── Progress view ───────── */
-let chartTotalVolume, chartExerciseVolume, chartExercise1rm;
+let chartExerciseVolume, chartExercise1rm;
+let splitCharts = [];
+let progressSeg = "overview";
 
 function renderProgress() {
   const ex = $("#progress-exercise");
@@ -1308,14 +1310,19 @@ function renderProgress() {
     });
     ex.onchange = () => renderExerciseCharts(ex.value);
   }
+  $$("#progress-seg button").forEach(b => {
+    b.classList.toggle("active", b.dataset.seg === progressSeg);
+    b.onclick = () => { progressSeg = b.dataset.seg; renderProgress(); };
+  });
+  $$(".seg-panel").forEach(p => p.classList.toggle("hidden", p.id !== `seg-${progressSeg}`));
 
-  renderThisWeekTiles();
-  renderTotalVolume();
-  renderPRList();
-  renderExerciseCharts(ex.value || ex.options[0]?.value);
+  if (progressSeg === "overview") { renderThisWeekTiles(); renderSessionCompare(); renderSplitCharts(); renderConsistency(); }
+  if (progressSeg === "exercises") { renderProgression(); renderExerciseCharts(ex.value || ex.options[0]?.value); }
+  if (progressSeg === "records")   { renderPRTimeline(); renderPRList(); }
+  if (progressSeg === "insights")  { renderInsights(); }
 }
 
-// Compact per-workout stats shared by This-Week tile and PR list
+// Shared per-workout aggregate (used by History, week tiles, analytics)
 function workoutStats(w) {
   let volume = 0, sets = 0, best1rm = 0, cardioMin = 0, cardioMi = 0, timedSec = 0, bwReps = 0;
   w.entries.forEach(e => {
@@ -1324,12 +1331,9 @@ function workoutStats(w) {
     e.sets.forEach(s => {
       if (!setHasData(s)) return;
       switch (type) {
-        case "cardio":
-          cardioMin += parseNum(s.duration); cardioMi += parseNum(s.distance); break;
-        case "timed":
-          timedSec += parseNum(s.seconds); sets++; break;
-        case "bodyweight":
-          bwReps += parseNum(s.reps); sets++; break;
+        case "cardio": cardioMin += parseNum(s.duration); cardioMi += parseNum(s.distance); break;
+        case "timed": timedSec += parseNum(s.seconds); sets++; break;
+        case "bodyweight": bwReps += parseNum(s.reps); sets++; break;
         default: {
           const v = setVolume(s.load, s.reps);
           if (v > 0) { volume += v; sets++; }
@@ -1339,126 +1343,134 @@ function workoutStats(w) {
       }
     });
   });
-  // durationMin kept for callers that used it as "time when no start/end"
   return { volume, sets, best1rm, cardioMin, cardioMi, timedSec, bwReps, durationMin: cardioMin };
 }
 
+const pct = (x) => x == null ? "—" : `${Math.round(x * 100)}%`;
+const statusIcon = (s) => s === "up" ? `<span class="st up">▲</span>` : s === "down" ? `<span class="st down">▼</span>` : s === "first" ? `<span class="st first">new</span>` : `<span class="st flat">=</span>`;
+
 function renderThisWeekTiles() {
-  const wrap = $("#this-week-tiles");
-  if (!wrap) return;
-  const todayD = new Date(todayISO() + "T00:00:00");
-  const dayNum = (todayD.getDay() + 6) % 7; // Mon=0
-  const mon = new Date(todayD); mon.setDate(mon.getDate() - dayNum);
-  const prevMon = new Date(mon); prevMon.setDate(prevMon.getDate() - 7);
-
-  const inRange = (d, from, to) => {
-    const dd = new Date(d + "T00:00:00");
-    return dd >= from && dd < to;
-  };
-  const nextMon = new Date(mon); nextMon.setDate(nextMon.getDate() + 7);
-
-  const thisWs = state.workouts.filter(w => w.id !== activeWorkoutId && inRange(w.date, mon, nextMon));
-  const prevWs = state.workouts.filter(w => w.id !== activeWorkoutId && inRange(w.date, prevMon, mon));
-
-  const agg = (arr) => arr.reduce((acc, w) => {
-    const s = workoutStats(w);
-    acc.workouts++;
-    acc.volume += s.volume;
-    acc.sets += s.sets;
-    acc.cardioMin += s.cardioMin;
-    acc.cardioMi += s.cardioMi;
-    // Duration from start/end times, else fall back to cardio bout durations
-    const wallMin = durationMinutes(w.startTime, w.endTime);
-    acc.minutes += wallMin || s.durationMin;
-    return acc;
-  }, { workouts: 0, volume: 0, sets: 0, minutes: 0, cardioMin: 0, cardioMi: 0 });
-
-  const now = agg(thisWs);
-  const past = agg(prevWs);
-
-  const tile = (label, value, unit, curNum, prevNum, precision = 0) => {
-    const diff = curNum - prevNum;
+  const wrap = $("#this-week-tiles"); if (!wrap) return;
+  const now = Analytics.weekSummary(0), past = Analytics.weekSummary(-1);
+  const tile = (label, value, unit, cur, prev, precision = 0, opts = {}) => {
     let delta = "";
-    if (prevNum > 0) {
+    if (prev != null && prev > 0 && cur != null) {
+      const diff = cur - prev;
       const cls = diff > 0 ? "up" : diff < 0 ? "down" : "";
-      const sign = diff > 0 ? "+" : "";
-      delta = `<div class="tile-delta ${cls}">${sign}${fmt(diff, precision)} vs last wk</div>`;
-    } else if (curNum > 0) {
-      delta = `<div class="tile-delta muted">first week</div>`;
-    }
-    return `
-      <div class="week-tile">
-        <div class="tile-label">${label}</div>
-        <div class="tile-value">${value}<span class="tile-unit">${unit}</span></div>
-        ${delta}
-      </div>`;
+      delta = `<div class="tile-delta ${cls}">${diff > 0 ? "+" : ""}${opts.pct ? Math.round(diff * 100) + " pts" : fmt(diff, precision)} vs last wk</div>`;
+    } else if (opts.sub) delta = `<div class="tile-delta muted">${opts.sub}</div>`;
+    return `<div class="week-tile ${opts.cls || ""}"><div class="tile-label">${label}</div><div class="tile-value">${value}<span class="tile-unit">${unit}</span></div>${delta}</div>`;
   };
-
   wrap.innerHTML =
+    tile("Overload", now.score == null ? "—" : Math.round(now.score * 100), now.score == null ? "" : "%", now.score, past.score, 0, { pct: true, sub: `${now.improved}/${now.compared} lifts improved`, cls: "hero" }) +
+    tile("PRs", now.prs, "", now.prs, past.prs, 0, { sub: "new records", cls: now.prs ? "hero-pr" : "" }) +
     tile("Workouts", now.workouts, "", now.workouts, past.workouts) +
-    tile("Volume", fmt(now.volume), " " + state.settings.units, now.volume, past.volume) +
     tile("Sets", now.sets, "", now.sets, past.sets) +
     tile("Time", (now.minutes/60).toFixed(1), " hr", now.minutes/60, past.minutes/60, 1) +
-    tile("Cardio", fmt(now.cardioMin), " min", now.cardioMin, past.cardioMin) +
-    tile("Distance", fmt(now.cardioMi, 1), " mi", now.cardioMi, past.cardioMi, 1);
-
-  const fmtRange = (d1, d2) => `${d1.toLocaleDateString(undefined,{month:"short",day:"numeric"})} – ${d2.toLocaleDateString(undefined,{month:"short",day:"numeric"})}`;
-  const sun = new Date(nextMon); sun.setDate(sun.getDate() - 1);
-  $("#this-week-range").textContent = fmtRange(mon, sun);
+    tile("Cardio", fmt(now.cardioMin), " min", now.cardioMin, past.cardioMin);
+  const r = now.range, a = new Date(r.start + "T00:00:00"), b = new Date(r.end + "T00:00:00"); b.setDate(b.getDate() - 1);
+  const f = d => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  $("#this-week-range").textContent = `${f(a)} – ${f(b)}`;
 }
 
-function renderPRList() {
-  const list = $("#pr-list");
-  if (!list) return;
-  const prByEx = new Map();
-  state.workouts.filter(w => w.id !== activeWorkoutId).forEach(w => {
-    w.entries.forEach(e => {
-      const ex = state.exercises.find(x => x.id === e.exerciseId);
-      if (!ex || ex.type === "cardio") return;
-      e.sets.forEach(s => {
-        const load = parseNum(s.load), reps = parseNum(s.reps);
-        const r = oneRM(load, reps);
-        if (r <= 0) return;
-        const cur = prByEx.get(ex.id);
-        if (!cur || r > cur.best1rm) {
-          prByEx.set(ex.id, { name: ex.name, best1rm: r, load, reps, date: w.date });
-        }
-      });
-    });
-  });
-  const items = Array.from(prByEx.values()).sort((a,b) => b.best1rm - a.best1rm).slice(0, 12);
-  if (items.length === 0) {
-    list.innerHTML = `<div class="muted small">Log a few sets to see PRs.</div>`;
-    return;
+function renderSessionCompare() {
+  const el = $("#session-compare"); if (!el) return;
+  const { sessions } = Analytics.replay();
+  const recent = sessions.slice(-6).reverse();
+  if (!recent.length) { el.innerHTML = `<div class="muted small">No completed sessions yet.</div>`; return; }
+  el.innerHTML = recent.map(s => {
+    const w = s.workout;
+    const head = s.compared
+      ? `<strong>${s.improved}/${s.compared}</strong> improved${s.regressed ? ` · <span class="down">${s.regressed} down</span>` : ""}${s.prs ? ` · <span class="pr">${s.prs} PR${s.prs > 1 ? "s" : ""}</span>` : ""}`
+      : `<span class="muted">first time for these exercises</span>`;
+    const rows = s.items.map(it => {
+      // Lead with the most meaningful PR (e1RM > load > reps > volume), fold the rest into "+N"
+      const order = { e1rm: 0, load: 1, reps: 2, seconds: 2, distance: 2, pace: 2, volume: 3 };
+      const prs = it.prs.slice().sort((x, y) => (order[x.kind] ?? 9) - (order[y.kind] ?? 9));
+      const note = prs.length ? prLabel(prs[0]) + (prs.length > 1 ? ` +${prs.length - 1}` : "") : (it.notes[0] || (it.status === "first" ? "baseline" : it.status === "flat" ? "same as last time" : ""));
+      return `<div class="cmp-row"><span class="cmp-name">${statusIcon(it.status)}<span>${escapeHtml(it.name)}</span></span><span class="cmp-note ${prs.length ? "pr" : ""}">${escapeHtml(note)}</span></div>`;
+    }).join("");
+    return `<details class="session-cmp" style="--hue:${hueFor(w.day)}">
+      <summary><div><div class="cmp-title">${escapeHtml(w.day || "Workout")} <span class="muted">· ${prettyDate(w.date)}</span></div><div class="cmp-head">${head}</div></div>
+        <div class="cmp-bar"><div style="width:${s.score == null ? 0 : Math.round(s.score * 100)}%"></div></div></summary>
+      <div class="cmp-rows">${rows}</div></details>`;
+  }).join("");
+}
+
+function prLabel(p) {
+  const u = state.settings.units;
+  switch (p.kind) {
+    case "e1rm": return `e1RM PR ${Math.round(p.value)} ${u}`;
+    case "load": return `heaviest ${p.value} ${u}`;
+    case "reps": return `rep PR ${p.value}×${p.load} ${u}`;
+    case "volume": return `volume PR ${fmt(p.value)}`;
+    case "seconds": return `${p.value}s PR`;
+    case "distance": return `${p.value.toFixed(1)} mi PR`;
+    case "pace": { const m = Math.floor(p.value), s = Math.round((p.value - m) * 60); return `pace PR ${m}:${String(s).padStart(2,"0")}/mi`; }
+    default: return `${p.kind} PR`;
   }
-  list.innerHTML = items.map(pr => `
-    <div class="pr-row">
-      <div class="pr-name">${escapeHtml(pr.name)}</div>
-      <div class="pr-detail">${pr.load}×${pr.reps} · ${prettyDate(pr.date)}</div>
-      <div class="pr-value">${pr.best1rm.toFixed(1)} <span class="muted small">${state.settings.units}</span></div>
+}
+
+function renderSplitCharts() {
+  const host = $("#split-charts"); if (!host) return;
+  splitCharts.forEach(c => c.destroy()); splitCharts = [];
+  const { labels, series } = Analytics.volumeBySplit(8);
+  const names = Object.keys(series).filter(k => series[k].some(v => v > 0));
+  if (!names.length) { host.innerHTML = `<div class="muted small">Log a few weeks and each split gets its own chart here.</div>`; return; }
+  host.innerHTML = names.map(n => `<div class="split-chart"><div class="split-name"><i style="background:hsl(${hueFor(n)} 85% 62%)"></i>${escapeHtml(n)}</div><div class="split-canvas"><canvas data-split="${escapeHtml(n)}"></canvas></div></div>`).join("");
+  const c = chartBase();
+  host.querySelectorAll("canvas").forEach(cv => {
+    const n = cv.dataset.split; const color = `hsl(${hueFor(n)} 85% 62% / 0.85)`;
+    splitCharts.push(new Chart(cv, {
+      type: "bar",
+      data: { labels, datasets: [{ data: series[n].map(Math.round), backgroundColor: color, borderRadius: 4, borderSkipped: false, maxBarThickness: 22 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { displayColors: false, backgroundColor: c.elev, titleColor: c.text, bodyColor: c.text } },
+        scales: { x: { ticks: { color: c.dim, font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 4 }, grid: { display: false }, border: { display: false } },
+                  y: { display: false, beginAtZero: true } } },
+    }));
+  });
+}
+
+function renderConsistency() {
+  const el = $("#consistency"); if (!el) return;
+  const c = Analytics.consistency();
+  const splits = Object.entries(c.bySplit).sort((a, b) => b[1] - a[1]);
+  el.innerHTML = `
+    <div class="consistency-row">
+      <div class="metric"><div class="metric-label">Last 4 weeks</div><div class="metric-value">${c.total}</div><div class="metric-delta">${c.perWeek.toFixed(1)} / week</div></div>
+      <div class="metric"><div class="metric-label">Week streak</div><div class="metric-value">${c.streak}</div><div class="metric-delta">${c.streak ? "weeks in a row" : "log this week to start"}</div></div>
     </div>
-  `).join("");
+    <div class="split-pills">${splits.map(([n, k]) => `<span class="split-pill" style="--hue:${hueFor(n)}"><i></i>${escapeHtml(n)} <strong>${k}</strong></span>`).join("") || `<span class="muted small">No sessions in the last 4 weeks.</span>`}</div>`;
+}
+
+function renderProgression() {
+  const el = $("#progression-list"); if (!el) return;
+  const rows = Analytics.progression();
+  if (!rows.length) { el.innerHTML = `<div class="muted small">Needs at least two sessions of an exercise.</div>`; return; }
+  const u = state.settings.units;
+  const fmtMetric = (r, v) => r.metric === "e1rm" ? `${Math.round(v)} ${u}` : r.metric === "reps" ? `${v} reps` : r.metric === "seconds" ? `${v}s` : `${(+v).toFixed(1)} mi`;
+  el.innerHTML = rows.map(r => `
+    <div class="prog-row" data-ex="${r.exerciseId}">
+      <div class="prog-main"><span class="st ${r.trend}">${r.trend === "up" ? "▲" : r.trend === "down" ? "▼" : "="}</span><span class="prog-name">${escapeHtml(r.name)}</span></div>
+      <div class="prog-vals"><span class="prog-now">${fmtMetric(r, r.now)}</span><span class="prog-delta ${r.pct > 0.005 ? "up" : r.pct < -0.005 ? "down" : ""}">${r.pct > 0.005 ? "+" : ""}${Math.abs(r.pct) > 0.99 ? (r.pct > 0 ? "99%+" : "−99%") : Math.round(r.pct * 100) + "%"}</span></div>
+      <div class="prog-sub muted small">${r.recentSessions} session${r.recentSessions === 1 ? "" : "s"} in 4 wks · ${r.ups} up · ${r.downs} down</div>
+    </div>`).join("");
+  el.querySelectorAll(".prog-row").forEach(row => row.onclick = () => { $("#progress-exercise").value = row.dataset.ex; renderExerciseCharts(row.dataset.ex); $("#progress-exercise").scrollIntoView({ behavior: "smooth", block: "start" }); });
 }
 
 function getWeekData() {
-  // Returns sorted list of { weekKey, label, weekStart, totalVolume, perExercise: {exId: {volume, sets, best1rm}} }
+  // Per-exercise weekly aggregates (strength only) for the detail charts
   const map = {};
   state.workouts.filter(w => w.id !== activeWorkoutId).forEach(w => {
     const iw = isoWeek(w.date);
-    if (!map[iw.key]) map[iw.key] = { weekKey: iw.key, label: iw.label, weekStart: weekStart(iw.key), totalVolume: 0, perExercise: {} };
+    if (!map[iw.key]) map[iw.key] = { weekKey: iw.key, label: iw.label, perExercise: {} };
     w.entries.forEach(e => {
       e.sets.forEach(s => {
         const v = setVolume(s.load, s.reps);
         const r = oneRM(parseNum(s.load), parseNum(s.reps));
         if (v <= 0 && r <= 0) return;
-        map[iw.key].totalVolume += v;
-        if (!map[iw.key].perExercise[e.exerciseId]) {
-          map[iw.key].perExercise[e.exerciseId] = { volume: 0, sets: 0, best1rm: 0 };
-        }
-        const slot = map[iw.key].perExercise[e.exerciseId];
-        slot.volume += v;
-        if (s.load !== "" && s.reps !== "") slot.sets += 1;
-        if (r > slot.best1rm) slot.best1rm = r;
+        const slot = map[iw.key].perExercise[e.exerciseId] ||= { volume: 0, sets: 0, best1rm: 0 };
+        slot.volume += v; if (setHasData(s)) slot.sets += 1; if (r > slot.best1rm) slot.best1rm = r;
       });
     });
   });
@@ -1514,92 +1526,122 @@ function makeLineChart(canvas, labels, datasets) {
   });
 }
 
-function renderTotalVolume() {
-  const data = getWeekData();
-  if (chartTotalVolume) chartTotalVolume.destroy();
-  if (data.length === 0) return;
-  chartTotalVolume = makeLineChart(
-    $("#chart-total-volume"),
-    data.map(d => d.label),
-    [{ label: `Total volume (${state.settings.units})`, data: data.map(d => Math.round(d.totalVolume)) }]
-  );
-}
 
 function renderExerciseCharts(exId) {
   if (chartExerciseVolume) chartExerciseVolume.destroy();
   if (chartExercise1rm) chartExercise1rm.destroy();
-  const metrics = $("#progress-metrics");
-  metrics.innerHTML = "";
+  const metrics = $("#progress-metrics"); metrics.innerHTML = "";
+  const table = $("#exercise-sessions"); if (table) table.innerHTML = "";
   if (!exId) return;
+  const ex = state.exercises.find(e => e.id === exId);
+  const type = exerciseType(ex);
+  const hist = Analytics.exerciseHistory(exId, 8);
+  const u = state.settings.units;
 
-  const data = getWeekData();
-  const points = data.map(d => ({
-    label: d.label,
-    volume: d.perExercise[exId]?.volume || 0,
-    best1rm: d.perExercise[exId]?.best1rm || 0,
-    sets: d.perExercise[exId]?.sets || 0,
-  })).filter(p => p.volume > 0 || p.best1rm > 0);
-
-  if (points.length === 0) {
-    metrics.innerHTML = `<div class="muted small">No data yet for this exercise.</div>`;
-    return;
+  if (!hist.length) { metrics.innerHTML = `<div class="muted small">No sessions logged for this exercise yet.</div>`; return; }
+  const cur = hist[0], prev = hist[1];
+  const card = (label, value, delta, unit = "") => {
+    const cls = delta > 0 ? "up" : delta < 0 ? "down" : "";
+    const d = delta != null && Number.isFinite(delta) && Math.abs(delta) > 0.001 ? `<div class="metric-delta ${cls}">${delta > 0 ? "+" : ""}${fmt(delta, 1)}${unit} vs last</div>` : `<div class="metric-delta">${prev ? "same as last" : "first session"}</div>`;
+    return `<div class="metric"><div class="metric-label">${label}</div><div class="metric-value">${value}</div>${d}</div>`;
+  };
+  if (type === "strength") {
+    metrics.innerHTML = [
+      card(`Best e1RM (${u})`, fmt(cur.e1rm, 1), prev ? cur.e1rm - prev.e1rm : null),
+      card("Top set", `${cur.topLoad}×${cur.repsAtTop}`, prev && cur.topLoad === prev.topLoad ? cur.repsAtTop - prev.repsAtTop : (prev ? cur.topLoad - prev.topLoad : null), prev && cur.topLoad === prev.topLoad ? " reps" : ` ${u}`),
+      card("Volume", fmt(cur.volume), prev ? cur.volume - prev.volume : null),
+    ].join("");
+  } else if (type === "cardio") {
+    metrics.innerHTML = [card("Distance", `${cur.distance.toFixed(1)} mi`, prev ? cur.distance - prev.distance : null, " mi"), card("Minutes", fmt(cur.duration), prev ? cur.duration - prev.duration : null, " min"), card("Avg HR", cur.avgHR ? Math.round(cur.avgHR) : "—", null)].join("");
+  } else {
+    const k = type === "timed" ? "seconds" : "reps";
+    metrics.innerHTML = [card(type === "timed" ? "Total seconds" : "Total reps", cur[k], prev ? cur[k] - prev[k] : null), card("Best set", cur.bestSet, prev ? cur.bestSet - prev.bestSet : null), card("Sets", cur.sets, null)].join("");
   }
 
-  const cur = points[points.length-1];
-  const prev = points[points.length-2];
+  // Charts (strength only — weekly best e1RM and volume)
+  if (type === "strength") {
+    const data = getWeekData();
+    const points = data.map(d => ({ label: d.label, volume: d.perExercise[exId]?.volume || 0, best1rm: d.perExercise[exId]?.best1rm || 0 })).filter(p => p.volume > 0 || p.best1rm > 0);
+    if (points.length) {
+      chartExercise1rm = makeLineChart($("#chart-exercise-1rm"), points.map(p => p.label), [{ label: "Estimated 1RM", data: points.map(p => +p.best1rm.toFixed(1)) }]);
+      chartExerciseVolume = makeLineChart($("#chart-exercise-volume"), points.map(p => p.label), [{ label: "Weekly volume", data: points.map(p => Math.round(p.volume)), color: chartBase().dim }]);
+    }
+  }
 
-  const card = (label, value, delta) => {
-    const cls = delta > 0 ? "up" : delta < 0 ? "down" : "";
-    const sign = delta > 0 ? "+" : "";
-    const deltaHtml = (delta !== null && Number.isFinite(delta) && delta !== 0)
-      ? `<div class="metric-delta ${cls}">${sign}${fmt(delta, 1)}</div>` : "";
-    return `<div class="metric"><div class="metric-label">${label}</div><div class="metric-value">${value}</div>${deltaHtml}</div>`;
-  };
-  metrics.innerHTML = [
-    card(`Volume (${state.settings.units})`, fmt(cur.volume), prev ? cur.volume - prev.volume : null),
-    card(`Best e1RM (${state.settings.units})`, fmt(cur.best1rm, 1), prev ? cur.best1rm - prev.best1rm : null),
-    card("Sets this week", String(cur.sets), prev ? cur.sets - prev.sets : null),
-  ].join("");
-
-  const c = chartBase();
-  chartExerciseVolume = makeLineChart(
-    $("#chart-exercise-volume"),
-    points.map(p => p.label),
-    [{ label: "Volume", data: points.map(p => Math.round(p.volume)) }]
-  );
-  chartExercise1rm = makeLineChart(
-    $("#chart-exercise-1rm"),
-    points.map(p => p.label),
-    [{ label: "Estimated 1RM", data: points.map(p => +p.best1rm.toFixed(1)), color: c.accent }]
-  );
+  // Session table
+  if (table) {
+    const line = (h) => type === "strength" ? `${h.topLoad}×${h.repsAtTop} · e1RM ${Math.round(h.e1rm)} · vol ${fmt(h.volume)}`
+      : type === "cardio" ? `${fmt(h.duration)} min · ${h.distance.toFixed(1)} mi${h.avgHR ? ` · ${Math.round(h.avgHR)} bpm` : ""}`
+      : type === "timed" ? `${h.seconds}s total · best ${h.bestSet}s` : `${h.reps} reps · best ${h.bestSet}`;
+    table.innerHTML = `<div class="health-group-title" style="margin-top:14px">Last ${hist.length} sessions</div>` + hist.map(h => `
+      <div class="sess-row"><div><div class="sess-date">${prettyDate(h.date)} <span class="muted">· ${escapeHtml(h.day || "")}</span></div><div class="sess-line">${line(h)}</div></div>
+      <div class="sess-status">${statusIcon(h.status)}${h.prs.length ? `<span class="pr-badge">PR</span>` : ""}</div></div>`).join("");
+  }
 }
 
-function renderWowTable() {
-  const tbl = $("#wow-table");
-  const data = getWeekData();
-  if (data.length === 0) { tbl.innerHTML = ""; return; }
-  const recentWeeks = data.slice(-6); // up to 6 most recent weeks
-  // Header
-  const headers = recentWeeks.map(w => `<th>${w.label}</th>`).join("");
-  const exerciseIds = new Set();
-  recentWeeks.forEach(w => Object.keys(w.perExercise).forEach(id => exerciseIds.add(id)));
-  const rows = Array.from(exerciseIds).map(id => {
-    const ex = state.exercises.find(e => e.id === id);
-    if (!ex) return "";
-    const cells = recentWeeks.map((w, i) => {
-      const v = w.perExercise[id]?.volume || 0;
-      const prev = i > 0 ? (recentWeeks[i-1].perExercise[id]?.volume || 0) : 0;
-      let arrow = "";
-      if (i > 0 && prev > 0 && v > 0) {
-        const d = v - prev;
-        if (d > 0) arrow = `<span class="up"> ▲${fmt(d)}</span>`;
-        else if (d < 0) arrow = `<span class="down"> ▼${fmt(d)}</span>`;
-      }
-      return `<td>${v ? fmt(v) : "—"}${arrow}</td>`;
-    }).join("");
-    return `<tr><td>${escapeHtml(ex.name)}</td>${cells}</tr>`;
+function renderPRTimeline() {
+  const el = $("#pr-timeline"); if (!el) return;
+  const prs = Analytics.recentPRs(20);
+  if (!prs.length) { el.innerHTML = `<div class="muted small">PRs appear here once an exercise beats its earlier sessions.</div>`; return; }
+  let lastDate = "";
+  el.innerHTML = prs.map(p => {
+    const dateHead = p.date !== lastDate ? `<div class="pr-date">${prettyDate(p.date)}</div>` : "";
+    lastDate = p.date;
+    return `${dateHead}<div class="pr-event"><span class="pr-kind ${p.kind}">${p.kind === "e1rm" ? "1RM" : p.kind}</span><span class="pr-ex">${escapeHtml(p.name)}</span><span class="pr-val">${escapeHtml(prLabel(p).replace(/^(e1RM PR|heaviest|rep PR|volume PR|pace PR)\s*/, ""))}${p.prevValue ? `<em>was ${p.kind === "volume" ? fmt(p.prevValue) : p.kind === "pace" ? "" : Math.round(p.prevValue)}</em>` : ""}</span></div>`;
   }).join("");
-  tbl.innerHTML = `<thead><tr><th>Exercise</th>${headers}</tr></thead><tbody>${rows}</tbody>`;
+}
+
+function renderPRList() {
+  const list = $("#pr-list"); if (!list) return;
+  const rows = Analytics.recordsTable().filter(r => r.prs.e1rm || r.prs.load || r.prs.reps);
+  if (!rows.length) { list.innerHTML = `<div class="muted small">Log a few strength sets to see records.</div>`; return; }
+  const u = state.settings.units;
+  list.innerHTML = rows.map(r => `
+    <div class="pr-row">
+      <div class="pr-name">${escapeHtml(r.name)}</div>
+      <div class="pr-detail">${[
+        r.prs.load ? `heaviest ${r.prs.load.value} ${u}` : null,
+        r.prs.reps ? `rep PR ${r.prs.reps.value}×${r.prs.reps.load}` : null,
+        r.last ? `last PR ${prettyDate(r.last)}` : null,
+      ].filter(Boolean).join(" · ")}</div>
+      <div class="pr-value">${r.prs.e1rm ? r.prs.e1rm.value.toFixed(1) : "—"} <span class="muted small">${u} e1RM</span></div>
+    </div>`).join("");
+}
+
+function renderInsights() {
+  const list = $("#insights-list"), intro = $("#insights-intro"), best = $("#best-sessions");
+  if (!list) return;
+  const ins = Analytics.insights();
+  intro.textContent = ins.sessions < 6
+    ? `Insights unlock after ~6 sessions with comparable lifts. You have ${ins.sessions}.`
+    : `${ins.sessions} sessions · ${ins.withHealth} with Watch/sleep data · ${ins.withNutrition} with nutrition. "Quality" = share of lifts that beat your previous session.`;
+  const ready = ins.results.filter(r => r.ready);
+  const waiting = ins.results.filter(r => !r.ready);
+  const bar = (v) => `<div class="ins-bar"><div style="width:${v == null ? 0 : Math.round(v * 100)}%"></div></div>`;
+  list.innerHTML = ready.map(r => {
+    const better = r.delta > 0.05 ? "a" : r.delta < -0.05 ? "b" : "none";
+    const headline = better === "a" ? `Better sessions with ${r.a}` : better === "b" ? `Better sessions with ${r.b}` : `${r.label}: no clear difference yet`;
+    return `<div class="insight ${better === "none" ? "neutral" : ""}">
+      <div class="ins-title">${escapeHtml(headline)}</div>
+      <div class="ins-grid">
+        <div><div class="ins-label">${escapeHtml(r.a)} <span class="muted">n=${r.nA}</span></div>${bar(r.scoreA)}<div class="ins-num">${pct(r.scoreA)} improved · ${r.prA == null ? "—" : r.prA.toFixed(1)} PRs/session</div></div>
+        <div><div class="ins-label">${escapeHtml(r.b)} <span class="muted">n=${r.nB}</span></div>${bar(r.scoreB)}<div class="ins-num">${pct(r.scoreB)} improved · ${r.prB == null ? "—" : r.prB.toFixed(1)} PRs/session</div></div>
+      </div></div>`;
+  }).join("") + (waiting.length ? `<div class="ins-waiting"><div class="health-group-title">Still collecting</div>${waiting.map(r => `<span class="split-pill"><i style="background:var(--text-faint)"></i>${escapeHtml(r.label)} <strong>${Math.min(r.nA, r.nB)}/3</strong></span>`).join("")}</div>` : "");
+  if (!ready.length && !waiting.length) list.innerHTML = `<div class="muted small">Finish a few more workouts to start seeing patterns.</div>`;
+
+  if (best) {
+    best.innerHTML = ins.best.length ? ins.best.map(c => {
+      const bits = [];
+      if (c.sleep != null) bits.push(`${c.sleep.toFixed(1)}h sleep`);
+      if (c.proteinHit != null) bits.push(c.proteinHit ? "protein ✓" : "protein ✗");
+      if (c.hrv != null) bits.push(`HRV ${Math.round(c.hrv)}`);
+      if (c.rhr != null) bits.push(`RHR ${Math.round(c.rhr)}`);
+      if (c.restDays != null) bits.push(`${c.restDays} rest day${c.restDays === 1 ? "" : "s"}`);
+      if (c.mins) bits.push(`${c.mins} min`);
+      return `<div class="best-row" style="--hue:${hueFor(c.session.workout.day)}"><div><div class="sess-date">${escapeHtml(c.session.workout.day || "Workout")} <span class="muted">· ${prettyDate(c.date)}</span></div><div class="sess-line">${bits.length ? bits.join(" · ") : "no Health data for this day"}</div></div><div class="best-score"><strong>${pct(c.score)}</strong>${c.prs ? `<span class="pr-badge">${c.prs} PR</span>` : ""}</div></div>`;
+    }).join("") : `<div class="muted small">Needs sessions with at least two comparable lifts.</div>`;
+  }
 }
 
 /* ───────── Library view ───────── */
