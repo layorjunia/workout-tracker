@@ -568,6 +568,20 @@ details.setup .setup-list { margin-top: 8px; }
 .kv-k { color: var(--text-dim); }
 .kv-v { font-weight: 700; font-variant-numeric: tabular-nums; }
 
+.bw-big { font-size: 30px; font-weight: 800; letter-spacing: -0.025em; line-height: 1; }
+.bw-list { margin-top: 10px; }
+.bw-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px dashed var(--border); font-size: 13.5px; }
+.bw-row:last-child { border-bottom: none; }
+.bw-row em { font-style: normal; margin-left: 6px; font-size: 12px; }
+.bw-row strong { font-variant-numeric: tabular-nums; }
+.stat-bw { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.bw-chip {
+  background: var(--bg-elev-3); border: 1px dashed var(--border-strong); color: var(--text-dim);
+  border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: var(--font);
+}
+.bw-chip strong { color: var(--text); }
+.bw-chip em { font-style: normal; font-size: 10px; margin-left: 4px; color: var(--warn); }
+
 .setup-list { padding-left: 20px; margin: 0; font-size: 13px; line-height: 1.55; }
 .setup-list li { margin-bottom: 8px; }
 

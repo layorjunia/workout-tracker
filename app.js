@@ -287,6 +287,51 @@ function effectiveNutrition(n) {
     : h.calories;
   return { protein, carbs, fat, kcal, fromHealth: !manualAny && Object.keys(h).length > 0, hasAny: !!(protein || carbs || fat || kcal) };
 }
+// ── Body weight over time ──────────────────────────────────────────────────
+// Readings come from the manual log (state.bodyweight) and from Apple Health
+// (state.health.daily[date].weightLbs). bodyweightOn(date) returns the latest
+// reading on or before that date — what you actually weighed when you did the
+// pull-ups — falling back to the profile weight.
+let _bwIndex = null, _bwIndexSig = null;
+function bodyweightIndex() {
+  const sig = (state.lastModified || 0) + ":" + (state.bodyweight?.length || 0) + ":" + Object.keys(state.health?.daily || {}).length;
+  if (_bwIndex && _bwIndexSig === sig) return _bwIndex;
+  const byDate = new Map();
+  for (const [d, v] of Object.entries(state.health?.daily || {})) if (v && Number.isFinite(+v.weightLbs) && +v.weightLbs > 0) byDate.set(d, { date: d, lbs: +v.weightLbs, source: "health" });
+  for (const e of state.bodyweight || []) if (e && e.date && Number.isFinite(+e.lbs) && +e.lbs > 0) byDate.set(e.date, { date: e.date, lbs: +e.lbs, source: e.source || "manual" }); // manual wins for the same day
+  _bwIndex = Array.from(byDate.values()).sort((x, y) => x.date.localeCompare(y.date));
+  _bwIndexSig = sig;
+  return _bwIndex;
+}
+function bodyweightOn(date) {
+  const idx = bodyweightIndex();
+  let lo = 0, hi = idx.length - 1, best = null;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (idx[m].date <= date) { best = idx[m]; lo = m + 1; } else hi = m - 1; }
+  if (best) return { lbs: best.lbs, date: best.date, source: best.source };
+  const p = state.profile?.weight;
+  return p ? { lbs: +p, date: null, source: "profile" } : null;
+}
+function latestBodyweight() {
+  const idx = bodyweightIndex();
+  return idx.length ? idx[idx.length - 1] : (state.profile?.weight ? { lbs: +state.profile.weight, date: null, source: "profile" } : null);
+}
+function logBodyweight(lbs, date = todayISO()) {
+  const v = parseNum(lbs); if (!(v > 0)) return false;
+  state.bodyweight = state.bodyweight || [];
+  const i = state.bodyweight.findIndex(e => e.date === date);
+  const entry = { date, lbs: Math.round(v * 10) / 10, source: "manual", updatedAt: Date.now() };
+  if (i >= 0) state.bodyweight[i] = entry; else state.bodyweight.push(entry);
+  state.bodyweight.sort((x, y) => x.date.localeCompare(y.date));
+  state.profile.weight = entry.lbs;   // keep BMI / TDEE current
+  saveState();
+  return true;
+}
+// Effective load for a bodyweight-type set on a date: body weight + added
+function effectiveLoad(set, date) {
+  const bw = bodyweightOn(date);
+  return (bw ? bw.lbs : 0) + parseNum(set?.load);
+}
+
 function proteinGoalFor(p) {
   const g = state.profile?.goals?.protein;
   if (g) return g;
@@ -472,6 +517,12 @@ function mergeStates(local, remote) {
     }
   out.nutrition = Array.from(nut.values()).sort((a, b) => a.date.localeCompare(b.date));
 
+  // Body-weight log: keyed by date, newer edit wins
+  const bwMap = new Map();
+  for (const src of localNewer ? [remote.bodyweight, local.bodyweight] : [local.bodyweight, remote.bodyweight])
+    for (const e of src || []) { const prev = bwMap.get(e.date); if (!prev || (e.updatedAt || 0) >= (prev.updatedAt || 0)) bwMap.set(e.date, e); }
+  out.bodyweight = Array.from(bwMap.values()).sort((x, y) => x.date.localeCompare(y.date));
+
   // Health: latest snapshot wins; daily history unions by date
   const lh = local.health || {}, rh = remote.health || {};
   const lt = Date.parse(lh.data?.updatedAt || 0) || 0, rt = Date.parse(rh.data?.updatedAt || 0) || 0;
@@ -503,6 +554,7 @@ function defaultState() {
     profile: defaultProfile(),
     nutrition: [],
     health: { lastFetch: null, data: null, lastError: null, daily: {} },
+    bodyweight: [],
     deletedWorkouts: {},
     lastModified: 0,
     seedHistoryLoaded: true, // suppress migrate() from ever loading synthetic data
@@ -522,6 +574,7 @@ function migrate(s) {
   s.nutrition ??= [];
   s.health ??= { lastFetch: null, data: null, lastError: null };
   s.health.daily ??= {};
+  s.bodyweight ??= [];
   s.deletedWorkouts ??= {};
   s.lastModified ??= 0;
   s.seedHistoryLoaded ??= false;
@@ -960,7 +1013,7 @@ function renderSetEntry(entry, idx, ex, prevSets, w, type) {
   const stats = type === "strength"
     ? `<span>Vol <strong class="stat-vol">0</strong></span><span>e1RM <strong class="stat-1rm">0</strong></span>`
     : type === "bodyweight"
-      ? `<span>Reps <strong class="stat-total">0</strong></span>`
+      ? `<span>Reps <strong class="stat-total">0</strong></span><span class="stat-bw"></span>`
       : `<span>Total <strong class="stat-total">0s</strong></span>`;
 
   div.innerHTML = `
@@ -1098,10 +1151,24 @@ function updateEntryStats(div, entry, prevSets, type = "strength") {
     else delta.innerHTML = `<span class="delta-down">▼ ${fmt(diff)}${unit}</span>`;
   };
   if (type === "bodyweight") {
+    const w = getWorkout(activeWorkoutId);
+    const date = w?.date || todayISO();
+    const bw = bodyweightOn(date);
     const cur = entry.sets.reduce((a, s) => a + parseNum(s.reps), 0);
     const prev = prevSets.reduce((a, s) => a + parseNum(s.reps), 0);
     const topAdded = Math.max(0, ...entry.sets.map(s => parseNum(s.load)));
-    div.querySelector(".stat-total").textContent = fmt(cur) + (topAdded ? ` · +${topAdded} ${state.settings.units}` : "");
+    let best = 0;
+    entry.sets.forEach(s => { if (setHasData(s)) best = Math.max(best, oneRM(effectiveLoad(s, date), parseNum(s.reps))); });
+    div.querySelector(".stat-total").textContent = fmt(cur) + (topAdded ? ` · +${topAdded}` : "");
+    const bwEl = div.querySelector(".stat-bw");
+    if (bwEl) bwEl.innerHTML = bw
+      ? `<button class="bw-chip" title="Tap to log today's body weight">BW <strong>${fmt(bw.lbs, 1)}</strong>${bw.source === "profile" ? "<em>profile</em>" : ""}</button> · total <strong>${fmt((bw.lbs + topAdded))}</strong>${best ? ` · e1RM <strong>${fmt(best)}</strong>` : ""}`
+      : `<button class="bw-chip">Set body weight</button>`;
+    const chip = div.querySelector(".bw-chip");
+    if (chip) chip.onclick = () => {
+      const v = prompt(`Body weight on ${prettyDate(date)} (${state.settings.units})`, bw ? String(bw.lbs) : "");
+      if (v != null && logBodyweight(v, date)) { toast("Body weight logged"); renderToday(); }
+    };
     showDelta(cur, prev, " reps"); return;
   }
   if (type === "timed") {
@@ -1177,7 +1244,7 @@ function closePicker() { $("#picker-modal").classList.add("hidden"); }
 
 /* ───────── History view ───────── */
 // Human-readable set summary for a history row, per exercise type.
-function setsSummary(type, sets) {
+function setsSummary(type, sets, date) {
   const logged = sets.filter(setHasData);
   if (!logged.length) return "";
   switch (type) {
@@ -1193,7 +1260,10 @@ function setsSummary(type, sets) {
       return bits.join(" · ");
     }
     case "timed":      return logged.map(s => `${parseNum(s.seconds)}s`).join("  ·  ");
-    case "bodyweight": return logged.map(s => `${parseNum(s.reps)}${parseNum(s.load) ? `+${parseNum(s.load)}` : ""}`).join("  ·  ") + " reps";
+    case "bodyweight": {
+      const bw = date ? bodyweightOn(date) : null;
+      return logged.map(s => `${parseNum(s.reps)}${parseNum(s.load) ? `+${parseNum(s.load)}` : ""}`).join("  ·  ") + " reps" + (bw ? ` @ BW ${fmt(bw.lbs, 0)}` : "");
+    }
     default:           return logged.map(s => `${parseNum(s.load)}×${parseNum(s.reps)}`).join("  ·  ");
   }
 }
@@ -1243,7 +1313,7 @@ function renderHistory() {
     const detail = w.entries.map(e => {
       const ex = state.exercises.find(x => x.id === e.exerciseId);
       const type = exerciseType(ex);
-      const txt = setsSummary(type, e.sets);
+      const txt = setsSummary(type, e.sets, w.date);
       return `<div class="history-exercise">
         <div class="history-exercise-name">${escapeHtml(ex?.name || "Unknown")}${type !== "strength" ? `<span class="type-tag ${type}">${EXERCISE_TYPES[type].label}</span>` : ""}</div>
         <div class="history-sets">${escapeHtml(txt) || "(no sets)"}</div>
@@ -1425,7 +1495,7 @@ function renderSessionCompare() {
 function prLabel(p) {
   const u = state.settings.units;
   switch (p.kind) {
-    case "e1rm": return `e1RM PR ${Math.round(p.value)} ${u}`;
+    case "e1rm": return `${p.bw ? "e1RM PR (BW+added) " : "e1RM PR "}${Math.round(p.value)} ${u}`;
     case "load": return `heaviest ${p.value} ${u}`;
     case "reps":
       if (p.total) return `${p.value} total reps PR`;
@@ -1476,7 +1546,7 @@ function renderProgression() {
   const rows = Analytics.progression();
   if (!rows.length) { el.innerHTML = `<div class="muted small">Needs at least two sessions of an exercise.</div>`; return; }
   const u = state.settings.units;
-  const fmtMetric = (r, v) => r.metric === "e1rm" ? `${Math.round(v)} ${u}` : r.metric === "reps" ? `${v} reps` : r.metric === "seconds" ? `${v}s` : `${(+v).toFixed(1)} mi`;
+  const fmtMetric = (r, v) => (r.metric === "e1rm" || r.metric === "effE1rm") ? `${Math.round(v)} ${u}` : r.metric === "reps" ? `${v} reps` : r.metric === "seconds" ? `${v}s` : `${(+v).toFixed(1)} mi`;
   el.innerHTML = rows.map(r => `
     <div class="prog-row" data-ex="${r.exerciseId}">
       <div class="prog-main"><span class="st ${r.trend}">${r.trend === "up" ? "▲" : r.trend === "down" ? "▼" : "="}</span><span class="prog-name">${escapeHtml(r.name)}</span></div>
@@ -1493,9 +1563,11 @@ function getWeekData() {
     const iw = isoWeek(w.date);
     if (!map[iw.key]) map[iw.key] = { weekKey: iw.key, label: iw.label, perExercise: {} };
     w.entries.forEach(e => {
+      const isBW = exerciseType(state.exercises.find(x => x.id === e.exerciseId)) === "bodyweight";
       e.sets.forEach(s => {
-        const v = setVolume(s.load, s.reps);
-        const r = oneRM(parseNum(s.load), parseNum(s.reps));
+        const load = isBW ? effectiveLoad(s, w.date) : parseNum(s.load);
+        const v = load * parseNum(s.reps);
+        const r = oneRM(load, parseNum(s.reps));
         if (v <= 0 && r <= 0) return;
         const slot = map[iw.key].perExercise[e.exerciseId] ||= { volume: 0, sets: 0, best1rm: 0 };
         slot.volume += v; if (setHasData(s)) slot.sets += 1; if (r > slot.best1rm) slot.best1rm = r;
@@ -1581,13 +1653,19 @@ function renderExerciseCharts(exId) {
     ].join("");
   } else if (type === "cardio") {
     metrics.innerHTML = [card("Distance", `${cur.distance.toFixed(1)} mi`, prev ? cur.distance - prev.distance : null, " mi"), card("Minutes", fmt(cur.duration), prev ? cur.duration - prev.duration : null, " min"), card("Avg HR", cur.avgHR ? Math.round(cur.avgHR) : "—", null)].join("");
+  } else if (type === "bodyweight") {
+    metrics.innerHTML = [
+      card(`Effective e1RM (${u})`, cur.effE1rm ? fmt(cur.effE1rm) : "—", prev && prev.effE1rm ? cur.effE1rm - prev.effE1rm : null),
+      card("Top set", `${cur.repsAtTop}${cur.topLoad ? ` +${cur.topLoad}` : ""} @ BW ${fmt(cur.bw || 0)}`, prev && prev.bw ? (cur.bw || 0) - prev.bw : null, ` ${u} BW`),
+      card("Rel. strength", cur.relStrength ? `${cur.relStrength.toFixed(2)}× BW` : "—", prev && prev.relStrength ? cur.relStrength - prev.relStrength : null, "×"),
+    ].join("");
   } else {
     const k = type === "timed" ? "seconds" : "reps";
     metrics.innerHTML = [card(type === "timed" ? "Total seconds" : "Total reps", cur[k], prev ? cur[k] - prev[k] : null), card("Best set", cur.bestSet, prev ? cur.bestSet - prev.bestSet : null), card("Sets", cur.sets, null)].join("");
   }
 
-  // Charts (strength only — weekly best e1RM and volume)
-  if (type === "strength") {
+  // Charts (strength + bodyweight — weekly best e1RM and volume; bodyweight uses BW + added)
+  if (type === "strength" || type === "bodyweight") {
     const data = getWeekData();
     const points = data.map(d => ({ label: d.label, volume: d.perExercise[exId]?.volume || 0, best1rm: d.perExercise[exId]?.best1rm || 0 })).filter(p => p.volume > 0 || p.best1rm > 0);
     if (points.length) {
@@ -1600,7 +1678,8 @@ function renderExerciseCharts(exId) {
   if (table) {
     const line = (h) => type === "strength" ? `${h.topLoad}×${h.repsAtTop} · e1RM ${Math.round(h.e1rm)} · vol ${fmt(h.volume)}`
       : type === "cardio" ? `${fmt(h.duration)} min · ${h.distance.toFixed(1)} mi${h.avgHR ? ` · ${Math.round(h.avgHR)} bpm` : ""}`
-      : type === "timed" ? `${h.seconds}s total · best ${h.bestSet}s` : `${h.reps} reps · best ${h.bestSet}`;
+      : type === "timed" ? `${h.seconds}s total · best ${h.bestSet}s`
+      : `${h.reps} reps${h.topLoad ? ` · +${h.topLoad}` : ""} @ BW ${fmt(h.bw || 0)}${h.effE1rm ? ` · e1RM ${fmt(h.effE1rm)}` : ""}`;
     table.innerHTML = `<div class="health-group-title" style="margin-top:14px">Last ${hist.length} sessions</div>` + hist.map(h => `
       <div class="sess-row"><div><div class="sess-date">${prettyDate(h.date)} <span class="muted">· ${escapeHtml(h.day || "")}</span></div><div class="sess-line">${line(h)}</div></div>
       <div class="sess-status">${statusIcon(h.status)}${h.prs.length ? `<span class="pr-badge">PR</span>` : ""}</div></div>`).join("");
@@ -1876,6 +1955,8 @@ function renderHealth() {
   if (pgIn) pgIn.value = p.goals?.protein || "";
   if (cgIn) cgIn.value = p.goals?.calories || "";
   updateProfileDisplay(p);
+  const bwDate = $("#bw-date"); if (bwDate && !bwDate.value) bwDate.value = todayISO();
+  renderBodyweightCard();
   renderNutritionSyncStatus();
 
   // Health snapshot
@@ -1916,6 +1997,33 @@ function updateMacroDisplay(n) {
   if (pgIn) pgIn.placeholder = pg ? `${pg} (suggested)` : "g";
   if (cgIn) cgIn.placeholder = cg ? `${cg} (TDEE)` : "kcal";
 }
+
+let chartBodyweight;
+function renderBodyweightCard() {
+  const cur = $("#bw-current"); if (!cur) return;
+  const latest = latestBodyweight();
+  cur.innerHTML = latest
+    ? `<div class="bw-big">${fmt(latest.lbs, 1)} <span class="tile-unit">${state.settings.units}</span></div><div class="muted small">${latest.date ? `${prettyDate(latest.date)} · ${latest.source === "health" ? "Apple Health" : "logged"}` : "from profile — log a reading to start a trend"}</div>`
+    : `<div class="muted small">No readings yet.</div>`;
+  const idx = bodyweightIndex();
+  const list = $("#bw-list");
+  if (list) list.innerHTML = idx.slice(-6).reverse().map(e => `<div class="bw-row"><span>${prettyDate(e.date)} <em class="muted">${e.source === "health" ? "Health" : "logged"}</em></span><strong>${fmt(e.lbs, 1)}</strong></div>`).join("") || "";
+  const cv = $("#chart-bodyweight");
+  if (cv) {
+    if (chartBodyweight) { chartBodyweight.destroy(); chartBodyweight = null; }
+    const since = isoDateLocal(new Date(Date.now() - 120 * 86400000));
+    const pts = idx.filter(e => e.date >= since);
+    cv.parentElement.classList.toggle("hidden", pts.length < 2);
+    if (pts.length >= 2) {
+      const c = chartBase();
+      chartBodyweight = new Chart(cv, { type: "line",
+        data: { labels: pts.map(e => e.date.slice(5)), datasets: [{ data: pts.map(e => e.lbs), borderColor: c.accent, backgroundColor: c.accent + "22", pointBackgroundColor: c.bg, pointBorderColor: c.accent, pointBorderWidth: 2, pointRadius: 3, borderWidth: 2, tension: 0.3, fill: true }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { displayColors: false, backgroundColor: c.elev, titleColor: c.text, bodyColor: c.text } },
+          scales: { x: { ticks: { color: c.dim, font: { size: 10 }, maxTicksLimit: 6, maxRotation: 0 }, grid: { display: false }, border: { display: false } }, y: { ticks: { color: c.dim, font: { size: 10 }, maxTicksLimit: 4 }, grid: { color: c.grid }, border: { display: false } } } } });
+    }
+  }
+}
+function isoDateLocal(d) { const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset()); return x.toISOString().slice(0, 10); }
 
 function updateProfileDisplay(p) {
   const bmi = calcBMI(p);
@@ -2202,6 +2310,15 @@ function bindEvents() {
   $("#m-notes").addEventListener("input", e => {
     upsertNutrition(healthCurrentDate || todayISO(), { notes: e.target.value });
   });
+  const bwBtn = $("#btn-bw-log");
+  if (bwBtn) bwBtn.onclick = () => {
+    const v = $("#bw-input").value;
+    const d = $("#bw-date").value || todayISO();
+    if (!logBodyweight(v, d)) { toast("Enter a weight"); return; }
+    $("#bw-input").value = "";
+    toast("Body weight logged");
+    renderHealth();
+  };
   ["height","weight","age"].forEach(k => {
     $(`#p-${k}`).addEventListener("input", e => {
       state.profile[k] = parseNum(e.target.value);

@@ -24,7 +24,7 @@ const Analytics = (() => {
   const exById = (id) => state.exercises.find(e => e.id === id);
 
   // ── Per-entry summary (type-aware) ─────────────────────────────────────
-  function entrySummary(entry) {
+  function entrySummary(entry, date) {
     const ex = exById(entry.exerciseId);
     const type = exerciseType(ex);
     const sets = (entry.sets || []).filter(setHasData);
@@ -40,15 +40,21 @@ const Analytics = (() => {
       }
       Object.assign(s, { e1rm: best, topLoad, repsAtTop, volume: vol, reps });
     } else if (type === "bodyweight") {
-      // Added weight (belt/vest) is optional; "top set" = heaviest added load, then most reps
-      let topLoad = 0, repsAtTop = 0;
+      // Added weight (belt/vest) is optional; "top set" = heaviest added load, then most reps.
+      // Effective load = body weight on that date + added, so 10 @ 220 vs 5 @ 250 compare honestly.
+      const bwRec = date ? bodyweightOn(date) : null;
+      const bw = bwRec ? bwRec.lbs : 0;
+      let topLoad = 0, repsAtTop = 0, effE1rm = 0, effVolume = 0;
       for (const st of sets) {
         const L = parseNum(st.load), R = parseNum(st.reps);
         if (L > topLoad || (L === topLoad && R > repsAtTop)) { topLoad = L; repsAtTop = R; }
+        if (bw > 0) { effE1rm = Math.max(effE1rm, oneRM(bw + L, R)); effVolume += (bw + L) * R; }
       }
       s.reps = sets.reduce((a, st) => a + parseNum(st.reps), 0);
       s.bestSet = Math.max(0, ...sets.map(st => parseNum(st.reps)));
       s.topLoad = topLoad; s.repsAtTop = repsAtTop;
+      s.bw = bw; s.effE1rm = effE1rm; s.effVolume = effVolume;
+      s.relStrength = bw > 0 ? (bw + topLoad) / bw : null;
     } else if (type === "timed") {
       s.seconds = sets.reduce((a, st) => a + parseNum(st.seconds), 0);
       s.bestSet = Math.max(0, ...sets.map(st => parseNum(st.seconds)));
@@ -84,7 +90,15 @@ const Analytics = (() => {
       }
     } else if (now.type === "bodyweight") {
       const u = state.settings.units;
-      if (now.topLoad > (prev.topLoad || 0)) { status = "up"; notes.push(`+${now.topLoad - (prev.topLoad || 0)} ${u} added`); }
+      const bwNote = now.bw && prev.bw && Math.abs(now.bw - prev.bw) >= 1 ? ` (BW ${Math.round(prev.bw)}→${Math.round(now.bw)})` : "";
+      // Prefer the effective e1RM when both sessions have a body-weight reading
+      if (now.effE1rm > 0 && prev.effE1rm > 0) {
+        if (now.effE1rm >= prev.effE1rm * (1 + EPS_E1RM)) { status = "up"; notes.push(`e1RM ${Math.round(prev.effE1rm)} → ${Math.round(now.effE1rm)}${bwNote}`); }
+        else if (now.effE1rm <= prev.effE1rm * (1 - REGRESS)) { status = "down"; notes.push(`e1RM ${Math.round(prev.effE1rm)} → ${Math.round(now.effE1rm)}${bwNote}`); }
+        else if (now.reps > prev.reps) { status = "up"; notes.push(`+${now.reps - prev.reps} reps${bwNote}`); }
+        else notes.push(`same${bwNote}`);
+      }
+      else if (now.topLoad > (prev.topLoad || 0)) { status = "up"; notes.push(`+${now.topLoad - (prev.topLoad || 0)} ${u} added`); }
       else if (now.topLoad === (prev.topLoad || 0) && now.repsAtTop > (prev.repsAtTop || 0) && now.topLoad > 0) { status = "up"; notes.push(`+${now.repsAtTop - prev.repsAtTop} reps at +${now.topLoad}`); }
       else if (now.topLoad < (prev.topLoad || 0) && now.reps <= prev.reps) { status = "down"; notes.push(`−${(prev.topLoad || 0) - now.topLoad} ${u} added`); }
       else if (now.reps > prev.reps) { status = "up"; notes.push(`+${now.reps - prev.reps} reps`); }
@@ -117,7 +131,7 @@ const Analytics = (() => {
       const items = [];
       let prs = 0;
       for (const entry of w.entries || []) {
-        const now = entrySummary(entry);
+        const now = entrySummary(entry, w.date);
         if (!now.sets) continue;
         const prev = lastByEx.get(now.exerciseId) || null;
         const cmp = compareEntry(now, prev);
@@ -143,7 +157,9 @@ const Analytics = (() => {
           r.volume = Math.max(r.volume, now.volume);
           recs.set(now.exerciseId, r);
         } else if (now.type === "bodyweight") {
-          // Rep PR = most reps in a set at a given added load; load PR = heaviest added weight
+          // Effective e1RM PR (BW + added), rep PR at a given added load, heaviest added weight
+          if (seen > 0 && now.effE1rm > 0 && (r.effE1rm || 0) > 0 && now.effE1rm > r.effE1rm * 1.005) newPRs.push({ kind: "e1rm", value: now.effE1rm, prevValue: r.effE1rm, bw: true });
+          r.effE1rm = Math.max(r.effE1rm || 0, now.effE1rm);
           const prevRepsAt = r.repsAt.get(now.topLoad) || 0;
           if (seen > 0 && now.topLoad > 0 && now.topLoad > r.load) newPRs.push({ kind: "load", value: now.topLoad, prevValue: r.load });
           if (seen > 0 && prevRepsAt > 0 && now.repsAtTop > prevRepsAt) newPRs.push({ kind: "reps", value: now.repsAtTop, prevValue: prevRepsAt, load: now.topLoad, bw: true });
@@ -261,7 +277,7 @@ const Analytics = (() => {
     for (const [id, hist] of byEx) {
       const last = hist[hist.length - 1];
       if (hist.length < 2) continue;
-      const metric = last.type === "strength" ? "e1rm" : last.type === "bodyweight" ? "reps" : last.type === "timed" ? "seconds" : "distance";
+      const metric = last.type === "strength" ? "e1rm" : last.type === "bodyweight" ? (last.effE1rm ? "effE1rm" : "reps") : last.type === "timed" ? "seconds" : "distance";
       const recent = hist.filter(h => h.date >= cutoff);
       // Baseline: last session before the window if it's reasonably recent (≤12 wks old);
       // otherwise the first session inside the window; otherwise the previous session.
