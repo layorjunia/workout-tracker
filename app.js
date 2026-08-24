@@ -2504,6 +2504,8 @@ function bindEvents() {
     });
   });
   $("#btn-health-refresh").onclick = () => syncHealth(true);
+  const bfBtn = $("#btn-health-backfill");
+  if (bfBtn) bfBtn.onclick = () => runFullBackfill(bfBtn);
   ["protein", "cal"].forEach(k => {
     const el = $(`#p-goal-${k}`); if (!el) return;
     el.addEventListener("input", e => {
@@ -2613,6 +2615,64 @@ function maybeShowInstallBanner() {
 /* ───────── Native HealthKit bridge (see capacitor-health.js) ───────── */
 // Called by the native shell with freshly read HealthKit metrics. Merges into
 // state.health.data; saveState() pushes to Firestore via the normal sync path.
+// Historical backfill: merge {date: metrics} into daily history. Live-synced
+// values win over backfilled ones for the same date+field.
+window.__applyDailyBackfill = (map) => {
+  if (!map || typeof map !== "object") return;
+  state.health = state.health || { lastFetch: null, data: null, lastError: null, daily: {} };
+  state.health.daily = state.health.daily || {};
+  const now = Date.now();
+  for (const [date, vals] of Object.entries(map)) {
+    const existing = state.health.daily[date] || {};
+    state.health.daily[date] = { ...vals, ...existing, updatedAt: Math.max(existing.updatedAt || 0, now) };
+  }
+  state.health.backfilledAt = now;
+  saveState();
+};
+
+// Enrich past workouts (with start+end times) from their HealthKit window,
+// then stamp sleep context now that daily history exists.
+async function backfillWorkoutHealth(onProgress) {
+  const native = window.WorkoutNativeHealth;
+  if (!native?.isNative) return 0;
+  const targets = state.workouts.filter(w => w.id !== activeWorkoutId && w.startTime && w.endTime && !(w.health && w.health.avgHR));
+  let i = 0, hit = 0;
+  for (const w of targets) {
+    onProgress?.(++i, targets.length);
+    try {
+      const data = await native.enrichWorkout({ date: w.date, startTime: w.startTime, endTime: w.endTime });
+      if (data) { w.health = { ...data, ...(w.health || {}) }; hit++; }
+    } catch (e) { console.warn("workout enrich failed:", e?.message || e); }
+    attachDailyContext(w);
+    w.updatedAt = Date.now();
+  }
+  // Sleep context for workouts without times, too
+  state.workouts.forEach(w => { if (w.id !== activeWorkoutId) attachDailyContext(w); });
+  saveState();
+  return hit;
+}
+
+async function runFullBackfill(btn) {
+  const native = window.WorkoutNativeHealth;
+  if (!native?.isNative) { toast("Open the iPhone app to backfill"); return; }
+  const label = btn ? (t) => { btn.disabled = true; btn.textContent = t; } : () => {};
+  try {
+    // Cover back to the earliest workout (+ a 2-week sleep-baseline runway)
+    const earliest = state.workouts.map(w => w.date).sort()[0] || todayISO();
+    const days = Math.min(730, Math.max(90, Math.ceil((Date.now() - Date.parse(earliest)) / 86400000) + 14));
+    label("Reading Apple Health…");
+    const daysFilled = await native.backfillHistory(days, (stage) => label(`Reading ${stage}…`));
+    label("Matching workouts…");
+    const enriched = await backfillWorkoutHealth((i, n) => label(`Workout ${i}/${n}…`));
+    toast(`Backfilled ${daysFilled} days · ${enriched} workouts enriched`);
+    renderHealth();
+  } catch (e) {
+    toast("Backfill failed: " + (e?.message || e));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Backfill Apple Health history"; }
+  }
+}
+
 window.__applyNativeHealth = (metrics) => {
   if (!metrics || typeof metrics !== "object") return;
   state.health = state.health || { lastFetch: null, data: null, lastError: null, daily: {} };
@@ -2795,6 +2855,16 @@ function init() {
     toast("Apple Health gist configured");
     history.replaceState({}, "", location.pathname);
   }
+  // One-time automatic history backfill: runs quietly once HealthKit is
+  // already authorized, so past workouts and nights fill in without a tap.
+  if (window.WorkoutNativeHealth?.isNative) {
+    setTimeout(() => {
+      if (!state.health?.backfilledAt && window.WorkoutNativeHealth.authorized?.()) {
+        runFullBackfill(document.getElementById("btn-health-backfill"));
+      }
+    }, 6000);
+  }
+
   // Kick off a background Health sync if a Gist is configured
   if (state.settings.gistId) syncHealth();
   // If there's an in-progress workout (last one with empty entries from a refresh), revive it

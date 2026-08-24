@@ -132,6 +132,96 @@
     return out;
   }
 
+  // ── Historical backfill ─────────────────────────────────────────────────
+  // Reads day-bucketed history straight from HealthKit and hands app.js a
+  // {date: metrics} map. Sleep is grouped into nights (segments joined unless
+  // the gap exceeds 2 h) and assigned to the wake-up date; overlapping samples
+  // from multiple sources (iPhone + Watch) are interval-unioned so awake and
+  // asleep minutes never double-count.
+  const localDate = (isoStr) => { const d = new Date(isoStr); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
+  function unionMinutes(intervals) {
+    if (!intervals.length) return 0;
+    intervals.sort((x, y) => x[0] - y[0]);
+    let total = 0, [cs, ce] = intervals[0];
+    for (let i = 1; i < intervals.length; i++) {
+      const [a, b] = intervals[i];
+      if (a > ce) { total += ce - cs; cs = a; ce = b; }
+      else ce = Math.max(ce, b);
+    }
+    total += ce - cs;
+    return total / 60000;
+  }
+
+  async function backfillHistory(days = 500, onProgress) {
+    await ensureAuthorized();
+    const h = health();
+    if (!h) return 0;
+    const end = new Date();
+    const start = new Date(); start.setDate(start.getDate() - days); start.setHours(0, 0, 0, 0);
+    const startISO = start.toISOString(), endISO = end.toISOString();
+    const daily = {};
+    const put = (date, k, v) => { if (v == null || Number.isNaN(v)) return; (daily[date] ||= {})[k] = v; };
+
+    const agg = async (dataType, aggregation) => {
+      try {
+        const { samples } = await h.queryAggregated({ dataType, startDate: startISO, endDate: endISO, bucket: "day", aggregation });
+        return samples || [];
+      } catch (e) { console.warn("[backfill]", dataType, e?.message || e); return []; }
+    };
+
+    onProgress?.("steps & calories");
+    for (const s of await agg("steps", "sum")) if (s.value > 0) put(localDate(s.startDate), "stepsToday", Math.round(s.value));
+    for (const s of await agg("calories", "sum")) if (s.value > 0) put(localDate(s.startDate), "activeEnergyToday", Math.round(s.value));
+
+    onProgress?.("heart metrics");
+    for (const s of await agg("restingHeartRate", "average")) if (s.value > 0) put(localDate(s.startDate), "restingHR", Math.round(s.value));
+    for (const s of await agg("heartRateVariability", "average")) if (s.value > 0) put(localDate(s.startDate), "hrv", Math.round(s.value));
+
+    onProgress?.("body weight");
+    for (const s of await read("weight", startISO, 10000)) {
+      const v = Number(s.value);
+      if (v > 0) put(localDate(s.endDate || s.startDate), "weightLbs", Math.round(v * 2.2046226218 * 10) / 10);
+    }
+    for (const s of await read("bodyFat", startISO, 10000)) {
+      const v = Number(s.value);
+      if (v > 0) put(localDate(s.endDate || s.startDate), "bodyFatPct", Math.round(v * 1000) / 10);
+    }
+
+    onProgress?.("sleep history");
+    const ASLEEP = new Set(["asleep", "light", "deep", "rem"]);
+    const segs = [];
+    for (let t = start.getTime(); t < end.getTime(); t += 90 * 86400000) {
+      const chunk = await read("sleep", new Date(t).toISOString(), 10000, new Date(Math.min(t + 90 * 86400000, end.getTime())).toISOString());
+      segs.push(...chunk);
+    }
+    const S = segs
+      .map(s => ({ a: Date.parse(s.startDate), b: Date.parse(s.endDate), st: s.sleepState || "asleep" }))
+      .filter(s => Number.isFinite(s.a) && Number.isFinite(s.b) && s.b > s.a && s.st !== "inBed")
+      .sort((x, y) => x.a - y.a);
+    const blocks = [];
+    let cur = null;
+    for (const s of S) {
+      if (!cur || s.a - cur[cur.length - 1].b > 2 * 3600 * 1000) { if (cur) blocks.push(cur); cur = []; }
+      cur.push(s);
+    }
+    if (cur) blocks.push(cur);
+    for (const blk of blocks) {
+      const asleepMin = unionMinutes(blk.filter(s => ASLEEP.has(s.st)).map(s => [s.a, s.b]));
+      if (asleepMin < 120) continue;                     // naps don't count as the night
+      const date = localDate(new Date(blk[blk.length - 1].b).toISOString());
+      if ((daily[date]?.sleepHours || 0) >= asleepMin / 60) continue;   // keep the longest night per date
+      const onset = new Date(blk[0].a);
+      const awakeMin = unionMinutes(blk.filter(s => s.st === "awake").map(s => [s.a, s.b]));
+      put(date, "sleepHours", Math.round(asleepMin / 6) / 10);
+      put(date, "sleepOnsetMin", ((onset.getHours() * 60 + onset.getMinutes()) + 720) % 1440);
+      put(date, "sleepAwakeMin", Math.round(awakeMin));
+      put(date, "sleepWakeups", blk.filter(s => s.st === "awake" && (s.b - s.a) >= 60000).length);
+    }
+
+    window.__applyDailyBackfill?.(daily);
+    return Object.keys(daily).length;
+  }
+
   // ── Per-workout enrichment ──────────────────────────────────────────────
   // Given a logged workout's local date + HH:MM start/end, read what the Watch
   // recorded in that window: heart-rate samples (avg/max/min), active calories,
@@ -240,7 +330,7 @@
     if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
   }
 
-  window.WorkoutNativeHealth = { isNative: true, syncNow, start, stop, enrichWorkout, syncNutrition };
+  window.WorkoutNativeHealth = { isNative: true, syncNow, start, stop, enrichWorkout, syncNutrition, backfillHistory, authorized: () => localStorage.getItem(AUTH_KEY) === "1" };
 
   // Re-sync when the app returns to the foreground (after permission granted once).
   document.addEventListener("visibilitychange", () => {
