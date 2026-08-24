@@ -47,6 +47,14 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.layorjunia.workouttracker.stepcheck</string>
+	</array>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Workout Tracker reads heart rate, sleep, activity, and body composition metrics to show trends alongside your logged workouts.</string>
 	<key>NSHealthUpdateUsageDescription</key>

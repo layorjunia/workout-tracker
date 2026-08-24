@@ -1,14 +1,72 @@
 import UIKit
 import Capacitor
+import BackgroundTasks
+import HealthKit
+import UserNotifications
+import WidgetKit
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
+    static let stepCheckTaskId = "com.layorjunia.workouttracker.stepcheck"
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // Background step check: re-reads HealthKit and updates/cancels the
+        // step-goal notification even when the app hasn't been opened.
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: Self.stepCheckTaskId, using: nil) { task in
+            Self.runStepCheck(task: task as? BGAppRefreshTask)
+        }
         return true
+    }
+
+    static func scheduleStepCheck() {
+        let request = BGAppRefreshTaskRequest(identifier: stepCheckTaskId)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 2 * 60 * 60)   // ~every 2 h, at iOS's discretion
+        try? BGTaskScheduler.shared.submit(request)
+    }
+
+    /// Reads today's steps straight from HealthKit (authorized via the main app),
+    /// refreshes the widget snapshot, and re-arms or cancels the reminder.
+    static func runStepCheck(task: BGAppRefreshTask?) {
+        scheduleStepCheck()   // always keep the chain alive
+        let defaults = UserDefaults(suiteName: StreakBridgePlugin.appGroup)
+        guard
+            let json = defaults?.string(forKey: "streakSnapshot"),
+            let data = json.data(using: .utf8),
+            var snap = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        else { task?.setTaskCompleted(success: true); return }
+
+        let goal = snap["goal"] as? Int ?? 10000
+        let store = HKHealthStore()
+        guard HKHealthStore.isHealthDataAvailable(),
+              let stepType = HKObjectType.quantityType(forIdentifier: .stepCount)
+        else { task?.setTaskCompleted(success: true); return }
+
+        let start = Calendar.current.startOfDay(for: Date())
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: Date())
+        let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, stats, _ in
+            let steps = Int(stats?.sumQuantity()?.doubleValue(for: .count()) ?? 0)
+            let hit = steps >= goal
+            snap["stepsToday"] = steps
+            snap["todayHit"] = hit
+            snap["updatedAt"] = Date().timeIntervalSince1970
+            if let out = try? JSONSerialization.data(withJSONObject: snap),
+               let str = String(data: out, encoding: .utf8) {
+                defaults?.set(str, forKey: "streakSnapshot")
+            }
+            if #available(iOS 14.0, *) { WidgetCenter.shared.reloadAllTimelines() }
+            StreakBridgePlugin.rescheduleReminder(
+                enabled: snap["reminderEnabled"] as? Bool ?? false,
+                hour: snap["reminderHour"] as? Int ?? 19,
+                todayHit: hit,
+                stepsToday: steps,
+                goal: goal,
+                streak: snap["streak"] as? Int ?? 0
+            )
+            task?.setTaskCompleted(success: true)
+        }
+        store.execute(query)
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
@@ -17,8 +75,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationDidEnterBackground(_ application: UIApplication) {
-        // Use this method to release shared resources, save user data, invalidate timers, and store enough application state information to restore your application to its current state in case it is terminated later.
-        // If your application supports background execution, this method is called instead of applicationWillTerminate: when the user quits.
+        Self.scheduleStepCheck()
     }
 
     func applicationWillEnterForeground(_ application: UIApplication) {

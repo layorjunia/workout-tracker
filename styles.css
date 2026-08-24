@@ -568,6 +568,26 @@ details.setup .setup-list { margin-top: 8px; }
 .kv-k { color: var(--text-dim); }
 .kv-v { font-weight: 700; font-variant-numeric: tabular-nums; }
 
+/* Step streak */
+.streak-top { display: flex; align-items: center; gap: 18px; }
+.streak-ring { position: relative; width: 96px; height: 96px; flex: 0 0 auto; }
+.streak-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring-bg { fill: none; stroke: var(--bg-elev-3); stroke-width: 7; }
+.ring-fg { fill: none; stroke: var(--accent); stroke-width: 7; stroke-linecap: round; transition: stroke-dashoffset 0.5s ease; }
+.ring-fg.done { stroke: var(--success); }
+.ring-label { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.ring-label strong { font-size: 17px; font-weight: 800; letter-spacing: -0.02em; }
+.ring-label span { font-size: 10px; color: var(--text-dim); }
+.streak-count .streak-flame { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; opacity: 0.45; }
+.streak-count .streak-flame.lit { opacity: 1; }
+.streak-days { display: grid; grid-template-columns: repeat(14, 1fr); gap: 4px; margin-top: 14px; }
+.streak-dot { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.streak-dot i { width: 100%; aspect-ratio: 1; max-width: 20px; border-radius: 6px; background: var(--bg-elev-3); }
+.streak-dot.hit i { background: var(--success); }
+.streak-dot.miss i { background: var(--danger-soft); }
+.streak-dot.today i { outline: 2px solid var(--accent); outline-offset: 1px; }
+.streak-dot span { font-size: 8.5px; color: var(--text-faint); font-weight: 700; }
+
 .bw-big { font-size: 30px; font-weight: 800; letter-spacing: -0.025em; line-height: 1; }
 .bw-list { margin-top: 10px; }
 .bw-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px dashed var(--border); font-size: 13.5px; }

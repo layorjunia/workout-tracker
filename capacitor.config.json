@@ -8,5 +8,8 @@
   },
   "server": {
     "iosScheme": "capacitor"
-  }
+  },
+  "packageClassList": [
+    "StreakBridgePlugin"
+  ]
 }

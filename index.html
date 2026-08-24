@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <title>Workout Tracker</title>
-<link rel="stylesheet" href="styles.css?v=24">
+<link rel="stylesheet" href="styles.css?v=25">
 </head>
 <body>
 
@@ -314,6 +314,27 @@
         <button class="btn btn-secondary web-only" id="btn-health-refresh" style="margin-top:10px;width:100%">Refresh from Gist</button>
         <button class="btn btn-secondary native-only" id="btn-health-sync-now" style="margin-top:10px;width:100%">Sync Apple Health now</button>
       </div>
+    </div>
+
+    <div class="card">
+      <h3>Step streak</h3>
+      <div id="streak-card"></div>
+      <div class="row" style="margin-top:12px; align-items:flex-end">
+        <label class="col" style="margin:0">
+          <span class="label">Daily step goal</span>
+          <input type="number" id="setting-step-goal" inputmode="numeric" step="500" min="1000" placeholder="10000">
+        </label>
+        <label class="col" style="margin:0">
+          <span class="label">Remind at (hour)</span>
+          <input type="number" id="setting-step-reminder-hour" inputmode="numeric" min="8" max="22" step="1">
+        </label>
+      </div>
+      <label class="row toggle" style="margin-top:10px">
+        <span>Notify me if I haven't hit my goal</span>
+        <input type="checkbox" id="setting-step-reminder" class="switch">
+      </label>
+      <p class="muted small native-only" style="margin:8px 0 0">Also add the <strong>Workout Streak</strong> widget: long-press your home screen → + → Workout Tracker.</p>
+      <p class="muted small web-only" style="margin:8px 0 0">Reminders and the home-screen widget work in the iPhone app.</p>
     </div>
 
     <div class="card">
@@ -616,10 +637,10 @@
   </button>
 </nav>
 
-<script src="vendor/chart.umd.js?v=24"></script>
-<script src="app.js?v=24"></script>
-<script src="analytics.js?v=24"></script>
-<script type="module" src="vendor/firebase-sync.bundle.js?v=24"></script>
-<script src="capacitor-health.js?v=24"></script>
+<script src="vendor/chart.umd.js?v=25"></script>
+<script src="app.js?v=25"></script>
+<script src="analytics.js?v=25"></script>
+<script type="module" src="vendor/firebase-sync.bundle.js?v=25"></script>
+<script src="capacitor-health.js?v=25"></script>
 </body>
 </html>

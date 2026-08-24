@@ -332,6 +332,68 @@ function effectiveLoad(set, date) {
   return (bw ? bw.lbs : 0) + parseNum(set?.load);
 }
 
+// Sleep score: transparent duration-based 0–100 (8 h = 100). Not a medical
+// score — just a comparable number so sessions can be ranked by rest.
+function sleepScoreFor(hours) {
+  if (!Number.isFinite(+hours) || hours <= 0) return null;
+  return Math.min(100, Math.round((hours / 8) * 100));
+}
+
+// ── Step streak ───────────────────────────────────────────────────────────
+// A day is "hit" when health.daily[date].stepsToday >= settings.stepGoal.
+// The streak counts consecutive hit days ending yesterday; today extends it
+// live once hit, but an unfinished today never breaks it.
+function stepsFor(date) {
+  const v = state.health?.daily?.[date]?.stepsToday;
+  return Number.isFinite(+v) ? +v : null;
+}
+function streakInfo() {
+  const goal = state.settings.stepGoal || 10000;
+  const today = todayISO();
+  const todaySteps = stepsFor(today) ?? (state.health?.data?.stepsToday ?? null);
+  const days = [];
+  for (let i = 0; i < 60; i++) {
+    const d = new Date(today + "T00:00:00"); d.setDate(d.getDate() - i);
+    const iso = isoDateLocal(d);
+    const steps = iso === today ? todaySteps : stepsFor(iso);
+    days.push({ date: iso, steps, hit: steps != null && steps >= goal, known: steps != null });
+  }
+  let streak = 0;
+  for (let i = 1; i < days.length; i++) {         // start yesterday
+    if (days[i].hit) streak++;
+    else break;
+  }
+  const todayHit = days[0].hit;
+  if (todayHit) streak++;
+  const last14 = days.slice(0, 14).reverse();
+  return { goal, streak, todayHit, todaySteps: todaySteps ?? 0, last14, pct: Math.min(1, (todaySteps || 0) / goal) };
+}
+
+// Push the streak snapshot to the native side (widget + notifications). No-op on web.
+function syncStreakToNative() {
+  const bridge = window.Capacitor?.Plugins?.StreakBridge;
+  if (!bridge) return;
+  const s = streakInfo();
+  bridge.update({
+    stepsToday: Math.round(s.todaySteps), goal: s.goal, streak: s.streak, todayHit: s.todayHit,
+    last7: s.last14.slice(-7).map(d => ({ date: d.date, hit: d.hit, known: d.known })),
+    reminderEnabled: !!state.settings.stepReminder,
+    reminderHour: state.settings.stepReminderHour || 19,
+    updatedAt: Date.now(),
+  }).catch(() => {});
+}
+
+function attachDailyContext(w) {
+  const h = healthFor(w.date);
+  if (!h) return;
+  w.health = w.health || {};
+  if (h.sleepHours != null && w.health.sleepHours == null) {
+    w.health.sleepHours = h.sleepHours;
+    w.health.sleepScore = sleepScoreFor(h.sleepHours);
+  }
+  if (h.stepsToday != null && w.health.steps == null) w.health.steps = h.stepsToday;
+}
+
 function proteinGoalFor(p) {
   const g = state.profile?.goals?.protein;
   if (g) return g;
@@ -569,6 +631,9 @@ function migrate(s) {
   s.settings.units ??= "lbs";
   s.settings.theme ??= "dark";
   s.settings.gistId ??= "";
+  s.settings.stepGoal ??= 10000;
+  s.settings.stepReminder ??= false;
+  s.settings.stepReminderHour ??= 19;   // 7 pm local
   s.profile = Object.assign(defaultProfile(), s.profile || {});
   s.profile.goals = Object.assign({ calories: null, protein: null }, s.profile.goals || {});
   s.nutrition ??= [];
@@ -840,6 +905,7 @@ function autoFinalize(toastMsg = "Workout saved") {
   const w = getWorkout(activeWorkoutId);
   if (!w) return;
   trimEmptySets(w);
+  attachDailyContext(w);
   saveState();
   const finishedId = activeWorkoutId;
   activeWorkoutId = null;
@@ -902,6 +968,7 @@ function finishWorkout() {
   // Auto-fill end time if user didn't manually set it
   if (!w.endTime) w.endTime = nowHHMM();
   trimEmptySets(w);
+  attachDailyContext(w);
   if (!workoutHasData(w)) {
     if (!confirm("This workout has no logged sets. Save anyway?")) return;
   }
@@ -1324,6 +1391,8 @@ function renderHistory() {
     const timeBits = [];
     if (w.startTime && w.endTime) timeBits.push(`${w.startTime}–${w.endTime} · ${durationLabel(w.startTime, w.endTime)}`);
     else if (w.startTime) timeBits.push(`started ${w.startTime}`);
+    const sleepH = w.health?.sleepHours ?? healthFor(w.date)?.sleepHours;
+    if (sleepH != null) timeBits.push(`☾ ${(+sleepH).toFixed(1)}h · ${w.health?.sleepScore ?? sleepScoreFor(sleepH)}`);
     const subLine = [w.day, ...timeBits].filter(Boolean).map(escapeHtml).join("  ·  ");
 
     const stats = [];
@@ -1956,6 +2025,7 @@ function renderHealth() {
   if (cgIn) cgIn.value = p.goals?.calories || "";
   updateProfileDisplay(p);
   const bwDate = $("#bw-date"); if (bwDate && !bwDate.value) bwDate.value = todayISO();
+  renderStreakCard();
   renderBodyweightCard();
   renderNutritionSyncStatus();
 
@@ -1996,6 +2066,34 @@ function updateMacroDisplay(n) {
   const pgIn = $("#p-goal-protein"), cgIn = $("#p-goal-cal");
   if (pgIn) pgIn.placeholder = pg ? `${pg} (suggested)` : "g";
   if (cgIn) cgIn.placeholder = cg ? `${cg} (TDEE)` : "kcal";
+}
+
+function renderStreakCard() {
+  const host = $("#streak-card"); if (!host) return;
+  const gI = $("#setting-step-goal"); if (gI && !gI.value) gI.value = state.settings.stepGoal;
+  const rT = $("#setting-step-reminder"); if (rT) rT.checked = !!state.settings.stepReminder;
+  const rH = $("#setting-step-reminder-hour"); if (rH && !rH.value) rH.value = state.settings.stepReminderHour;
+  const s = streakInfo();
+  const R = 30, C = 2 * Math.PI * R;
+  const ringOff = C * (1 - s.pct);
+  const dots = s.last14.map(d => {
+    const cls = d.hit ? "hit" : d.known ? "miss" : "unknown";
+    const dow = "SMTWTFS"[new Date(d.date + "T00:00:00").getDay()];
+    return `<div class="streak-dot ${cls}${d.date === todayISO() ? " today" : ""}" title="${d.date}${d.steps != null ? ` · ${fmt(d.steps)}` : ""}"><i></i><span>${dow}</span></div>`;
+  }).join("");
+  host.innerHTML = `
+    <div class="streak-top">
+      <div class="streak-ring">
+        <svg viewBox="0 0 72 72"><circle class="ring-bg" cx="36" cy="36" r="${R}"/><circle class="ring-fg${s.todayHit ? " done" : ""}" cx="36" cy="36" r="${R}" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${ringOff.toFixed(1)}"/></svg>
+        <div class="ring-label"><strong>${fmt(s.todaySteps)}</strong><span>of ${fmt(s.goal)}</span></div>
+      </div>
+      <div class="streak-count">
+        <div class="streak-flame ${s.streak > 0 ? "lit" : ""}">${s.streak > 0 ? "🔥" : "·"} <strong>${s.streak}</strong></div>
+        <div class="muted small">day streak${s.todayHit ? " · today ✓" : s.streak > 0 ? " · today pending" : ""}</div>
+      </div>
+    </div>
+    <div class="streak-days">${dots}</div>`;
+  syncStreakToNative();
 }
 
 let chartBodyweight;
@@ -2151,6 +2249,9 @@ function renderSettings() {
   $("#setting-units").value = state.settings.units;
   $("#setting-theme").value = state.settings.theme;
   $("#setting-gist-id").value = state.settings.gistId || "";
+  const gI = $("#setting-step-goal"); if (gI) gI.value = state.settings.stepGoal;
+  const rT = $("#setting-step-reminder"); if (rT) rT.checked = !!state.settings.stepReminder;
+  const rH = $("#setting-step-reminder-hour"); if (rH) rH.value = state.settings.stepReminderHour;
   $("#app-version").textContent = APP_VERSION;
 }
 
@@ -2310,6 +2411,26 @@ function bindEvents() {
   $("#m-notes").addEventListener("input", e => {
     upsertNutrition(healthCurrentDate || todayISO(), { notes: e.target.value });
   });
+  const goalInp = $("#setting-step-goal");
+  if (goalInp) goalInp.onchange = e => {
+    const v = Math.max(1000, Math.round(parseNum(e.target.value)));
+    state.settings.stepGoal = v || 10000; e.target.value = state.settings.stepGoal;
+    saveState(); renderStreakCard();
+  };
+  const remT = $("#setting-step-reminder");
+  if (remT) remT.onchange = async e => {
+    state.settings.stepReminder = e.target.checked;
+    saveState();
+    const bridge = window.Capacitor?.Plugins?.StreakBridge;
+    if (e.target.checked && bridge) {
+      try { const r = await bridge.requestNotifications(); if (r && r.granted === false) toast("Notifications are off in iOS Settings"); }
+      catch {}
+    }
+    syncStreakToNative();
+  };
+  const remH = $("#setting-step-reminder-hour");
+  if (remH) remH.onchange = e => { state.settings.stepReminderHour = Math.min(22, Math.max(8, parseInt(e.target.value) || 19)); e.target.value = state.settings.stepReminderHour; saveState(); syncStreakToNative(); };
+
   const bwBtn = $("#btn-bw-log");
   if (bwBtn) bwBtn.onclick = () => {
     const v = $("#bw-input").value;

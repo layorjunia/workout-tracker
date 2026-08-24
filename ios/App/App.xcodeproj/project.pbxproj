@@ -7,8 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A1B2C3D4E5F60002000000B2 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60002000000A2 /* MainViewController.swift */; };
-		A1B2C3D4E5F60001000000B1 /* NutritionPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000000A1 /* NutritionPlugin.swift */; };
+		04A2D4E3B17FDF0E2675DEEB /* StreakWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70E7CE0DA5D54A00FA704BBC /* StreakWidget.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
@@ -17,12 +16,40 @@
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		6BFFAFF6C062BC8E370D68CA /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A36E00D7A1E9903007B4B11E /* Foundation.framework */; };
+		7ADF76C1A5DF993E4B64A937 /* StreakWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 97BC49DADA16B4D179ABF396 /* StreakWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		86F50F5FB3C5F7215B1A60A9 /* StreakBridgePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = C494C65B39D702FF8E1108D3 /* StreakBridgePlugin.swift */; };
+		A1B2C3D4E5F60001000000B1 /* NutritionPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000000A1 /* NutritionPlugin.swift */; };
+		A1B2C3D4E5F60002000000B2 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60002000000A2 /* MainViewController.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		62EC4E2F91E5A647D39F5176 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 43487DA7743E70674323DF78;
+			remoteInfo = StreakWidget;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		5A1BC1F4F3DF400CA0155106 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				7ADF76C1A5DF993E4B64A937 /* StreakWidget.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
-		A1B2C3D4E5F60002000000A2 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F60001000000A1 /* NutritionPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NutritionPlugin.swift; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
+		38BB9F57E61911515B42407D /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -31,7 +58,14 @@
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
+		70E7CE0DA5D54A00FA704BBC /* StreakWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StreakWidget.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
+		97BC49DADA16B4D179ABF396 /* StreakWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = StreakWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		9F39AC0C9DBAC28E6953F6C8 /* StreakWidget.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = StreakWidget.entitlements; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000000A1 /* NutritionPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NutritionPlugin.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60002000000A2 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
+		A36E00D7A1E9903007B4B11E /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		C494C65B39D702FF8E1108D3 /* StreakBridgePlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StreakBridgePlugin.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -40,6 +74,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E078FE564274B625410C31B6 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6BFFAFF6C062BC8E370D68CA /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -52,6 +94,8 @@
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
 				504EC3061FED79650016851F /* App */,
 				504EC3051FED79650016851F /* Products */,
+				9CF911EE80E580E6DFBD7ACE /* Frameworks */,
+				7E3FB86462F5EB48CE7E2BA6 /* StreakWidget */,
 			);
 			sourceTree = "<group>";
 		};
@@ -59,6 +103,7 @@
 			isa = PBXGroup;
 			children = (
 				504EC3041FED79650016851F /* App.app */,
+				97BC49DADA16B4D179ABF396 /* StreakWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -76,13 +121,58 @@
 				504EC3131FED79650016851F /* Info.plist */,
 				2FAD9762203C412B000D30F8 /* config.xml */,
 				50B271D01FEDC1A000F3C39B /* public */,
+				C494C65B39D702FF8E1108D3 /* StreakBridgePlugin.swift */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		7E3FB86462F5EB48CE7E2BA6 /* StreakWidget */ = {
+			isa = PBXGroup;
+			children = (
+				70E7CE0DA5D54A00FA704BBC /* StreakWidget.swift */,
+				38BB9F57E61911515B42407D /* Info.plist */,
+				9F39AC0C9DBAC28E6953F6C8 /* StreakWidget.entitlements */,
+			);
+			name = StreakWidget;
+			path = StreakWidget;
+			sourceTree = "<group>";
+		};
+		9CF911EE80E580E6DFBD7ACE /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				B5FDD3324DCE5FF2D829BB14 /* iOS */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		B5FDD3324DCE5FF2D829BB14 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				A36E00D7A1E9903007B4B11E /* Foundation.framework */,
+			);
+			name = iOS;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		43487DA7743E70674323DF78 /* StreakWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7731CB7FE90A1EF301A23337 /* Build configuration list for PBXNativeTarget "StreakWidget" */;
+			buildPhases = (
+				2746B8F458175914B5FA2D1F /* Sources */,
+				E078FE564274B625410C31B6 /* Frameworks */,
+				52B5913863C1125FEF7F23EB /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = StreakWidget;
+			productName = StreakWidget;
+			productReference = 97BC49DADA16B4D179ABF396 /* StreakWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		504EC3031FED79650016851F /* App */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 504EC3161FED79650016851F /* Build configuration list for PBXNativeTarget "App" */;
@@ -90,10 +180,12 @@
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
+				5A1BC1F4F3DF400CA0155106 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				956AA5384A89F8BE9FD1DA3C /* PBXTargetDependency */,
 			);
 			name = App;
 			packageProductDependencies = (
@@ -136,6 +228,7 @@
 			projectRoot = "";
 			targets = (
 				504EC3031FED79650016851F /* App */,
+				43487DA7743E70674323DF78 /* StreakWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -154,9 +247,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		52B5913863C1125FEF7F23EB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		2746B8F458175914B5FA2D1F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				04A2D4E3B17FDF0E2675DEEB /* StreakWidget.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		504EC3001FED79650016851F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -164,10 +272,20 @@
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				A1B2C3D4E5F60002000000B2 /* MainViewController.swift in Sources */,
 				A1B2C3D4E5F60001000000B1 /* NutritionPlugin.swift in Sources */,
+				86F50F5FB3C5F7215B1A60A9 /* StreakBridgePlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		956AA5384A89F8BE9FD1DA3C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = StreakWidget;
+			target = 43487DA7743E70674323DF78 /* StreakWidget */;
+			targetProxy = 62EC4E2F91E5A647D39F5176 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
 		504EC30B1FED79650016851F /* Main.storyboard */ = {
@@ -305,8 +423,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = B4U26FR445;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B4U26FR445;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -329,8 +447,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = B4U26FR445;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B4U26FR445;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -345,6 +463,59 @@
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
+		};
+		C1E973C6E768220717692395 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = StreakWidget/StreakWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B4U26FR445;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = StreakWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.layorjunia.workouttracker.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		D8B06D8B2BF863BF72825847 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = StreakWidget/StreakWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B4U26FR445;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = StreakWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.layorjunia.workouttracker.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
 		};
 /* End XCBuildConfiguration section */
 
@@ -363,6 +534,15 @@
 			buildConfigurations = (
 				504EC3171FED79650016851F /* Debug */,
 				504EC3181FED79650016851F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7731CB7FE90A1EF301A23337 /* Build configuration list for PBXNativeTarget "StreakWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C1E973C6E768220717692395 /* Release */,
+				D8B06D8B2BF863BF72825847 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
