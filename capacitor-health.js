@@ -65,18 +65,39 @@
     return samples.reduce((acc, s) => acc + (Number(s.value) || 0), 0);
   }
 
-  // Sum asleep-phase durations over the last 24h. Excludes inBed/awake.
-  async function sleepHoursLastNight() {
-    const samples = await read("sleep", iso(now() - 24 * 3600 * 1000), 10000);
+  // Analyze last night: find the main sleep block (segments joined unless the
+  // gap exceeds 2 h), then measure asleep time, awake interruptions inside the
+  // block, and the onset time. Feeds the Apple-formula sleep score in app.js
+  // (duration 50 · bedtime consistency 30 · interruptions 20).
+  async function analyzeSleep() {
+    const samples = await read("sleep", iso(now() - 30 * 3600 * 1000), 10000);
     if (!samples.length) return null;
     const ASLEEP = new Set(["asleep", "light", "deep", "rem"]);
-    let mins = 0;
-    for (const s of samples) {
-      if (s.sleepState && !ASLEEP.has(s.sleepState)) continue;
-      const a = Date.parse(s.startDate), b = Date.parse(s.endDate);
-      if (Number.isFinite(a) && Number.isFinite(b) && b > a) mins += (b - a) / 60000;
+    const segs = samples
+      .map(s => ({ a: Date.parse(s.startDate), b: Date.parse(s.endDate), st: s.sleepState || "asleep" }))
+      .filter(s => Number.isFinite(s.a) && Number.isFinite(s.b) && s.b > s.a && s.st !== "inBed")
+      .sort((x, y) => x.a - y.a);
+    if (!segs.length) return null;
+
+    // Group into blocks split by >2h gaps, keep the block with the most asleep time
+    const blocks = [];
+    let cur = [segs[0]];
+    for (let i = 1; i < segs.length; i++) {
+      if (segs[i].a - cur[cur.length - 1].b > 2 * 3600 * 1000) { blocks.push(cur); cur = []; }
+      cur.push(segs[i]);
     }
-    return mins > 0 ? mins / 60 : null;
+    blocks.push(cur);
+    const asleepMin = blk => blk.reduce((m, s) => m + (ASLEEP.has(s.st) ? (s.b - s.a) / 60000 : 0), 0);
+    const night = blocks.reduce((best, b) => asleepMin(b) > asleepMin(best) ? b : best, blocks[0]);
+
+    const mins = asleepMin(night);
+    if (mins <= 0) return null;
+    const awakeSegs = night.filter(s => s.st === "awake" && (s.b - s.a) >= 60 * 1000);
+    const awakeMin = night.reduce((m, s) => m + (s.st === "awake" ? (s.b - s.a) / 60000 : 0), 0);
+    const onset = new Date(night[0].a);
+    // Minutes since noon, so bedtimes around midnight compare without wrapping
+    const onsetMin = ((onset.getHours() * 60 + onset.getMinutes()) + 720) % 1440;
+    return { hours: mins / 60, awakeMin: Math.round(awakeMin), wakeups: awakeSegs.length, onsetMin, hasDetail: night.some(s => s.st !== "asleep") };
   }
 
   const DAY = 24 * 3600 * 1000;
@@ -90,7 +111,7 @@
       sumToday("calories"),
       latest("weight", 60 * DAY),
       latest("bodyFat", 60 * DAY),
-      sleepHoursLastNight(),
+      analyzeSleep(),
     ]);
     const r1 = (n) => Math.round(n * 10) / 10;
     const out = {};
@@ -101,7 +122,13 @@
     if (kcal      != null) out.activeEnergyToday = Math.round(kcal);
     if (kg        != null) out.weightLbs         = r1(kg * 2.2046226218);       // kg → lb
     if (fat       != null) out.bodyFatPct        = r1(fat * 100);               // fraction → %
-    if (sleep     != null) out.sleepHours        = r1(sleep);
+    if (sleep) {
+      out.sleepHours   = r1(sleep.hours);
+      out.sleepOnsetMin = sleep.onsetMin;
+      out.sleepAwakeMin = sleep.awakeMin;
+      out.sleepWakeups  = sleep.wakeups;
+      out.sleepHasDetail = !!sleep.hasDetail;
+    }
     return out;
   }
 

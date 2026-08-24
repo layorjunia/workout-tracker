@@ -332,11 +332,45 @@ function effectiveLoad(set, date) {
   return (bw ? bw.lbs : 0) + parseNum(set?.load);
 }
 
-// Sleep score: transparent duration-based 0–100 (8 h = 100). Not a medical
-// score — just a comparable number so sessions can be ranked by rest.
-function sleepScoreFor(hours) {
+// Sleep score — Apple's published watchOS formula, recomputed from the same
+// HealthKit stage data Apple uses: duration 50 pts, bedtime consistency 30 pts,
+// interruptions 20 pts. Apple does NOT expose its own score to apps (verified
+// against the iOS 26.2 SDK), so this is the closest legitimate reconstruction;
+// expect it to track the Health app within a few points, not match exactly.
+function sleepScoreFor(date) {
+  const d = state.health?.daily?.[date];
+  const hours = d?.sleepHours;
   if (!Number.isFinite(+hours) || hours <= 0) return null;
-  return Math.min(100, Math.round((hours / 8) * 100));
+
+  // Duration — 50 pts, full credit at 7.5 h
+  const durationPts = 50 * Math.min(1, hours / 7.5);
+
+  // Interruptions — 20 pts, drained by time awake inside the night block
+  let interruptPts;
+  if (d.sleepAwakeMin != null) {
+    interruptPts = 20 * Math.max(0, 1 - d.sleepAwakeMin / 60);
+  } else {
+    interruptPts = 16;                          // no stage detail → neutral 80%
+  }
+
+  // Bedtime consistency — 30 pts vs the median onset of the prior 14 nights
+  let consistencyPts = 24;                      // neutral until a baseline exists
+  if (d.sleepOnsetMin != null) {
+    const prior = [];
+    for (let i = 1; i <= 14; i++) {
+      const dd = new Date(date + "T00:00:00"); dd.setDate(dd.getDate() - i);
+      const p = state.health?.daily?.[isoDateLocal(dd)];
+      if (p?.sleepOnsetMin != null) prior.push(p.sleepOnsetMin);
+    }
+    if (prior.length >= 3) {
+      prior.sort((x, y) => x - y);
+      const med = prior[Math.floor(prior.length / 2)];
+      let diff = Math.abs(d.sleepOnsetMin - med);
+      diff = Math.min(diff, 1440 - diff);       // clock wrap
+      consistencyPts = diff <= 20 ? 30 : 30 * Math.max(0, 1 - (diff - 20) / 130);
+    }
+  }
+  return Math.round(durationPts + interruptPts + consistencyPts);
 }
 
 // ── Step streak ───────────────────────────────────────────────────────────
@@ -389,7 +423,8 @@ function attachDailyContext(w) {
   w.health = w.health || {};
   if (h.sleepHours != null && w.health.sleepHours == null) {
     w.health.sleepHours = h.sleepHours;
-    w.health.sleepScore = sleepScoreFor(h.sleepHours);
+    const sc = sleepScoreFor(w.date);
+    if (sc != null) w.health.sleepScore = sc;
   }
   if (h.stepsToday != null && w.health.steps == null) w.health.steps = h.stepsToday;
 }
@@ -1392,7 +1427,8 @@ function renderHistory() {
     if (w.startTime && w.endTime) timeBits.push(`${w.startTime}–${w.endTime} · ${durationLabel(w.startTime, w.endTime)}`);
     else if (w.startTime) timeBits.push(`started ${w.startTime}`);
     const sleepH = w.health?.sleepHours ?? healthFor(w.date)?.sleepHours;
-    if (sleepH != null) timeBits.push(`☾ ${(+sleepH).toFixed(1)}h · ${w.health?.sleepScore ?? sleepScoreFor(sleepH)}`);
+    const sleepSc = w.health?.sleepScore ?? sleepScoreFor(w.date);
+    if (sleepH != null) timeBits.push(`☾ ${(+sleepH).toFixed(1)}h${sleepSc != null ? ` · ${sleepSc}` : ""}`);
     const subLine = [w.day, ...timeBits].filter(Boolean).map(escapeHtml).join("  ·  ");
 
     const stats = [];
@@ -2201,6 +2237,17 @@ function renderHealthSnapshot() {
   set("#h-exercise", d.exerciseMinutesToday, " min");
   set("#h-stand", d.standHoursToday, " hr");
   set("#h-sleep", d.sleepHours, " hr");
+  const sc = sleepScoreFor(date);
+  $("#h-sleep-score") && ($("#h-sleep-score").textContent = sc != null ? String(sc) : "—");
+  if ($("#h-sleep-onset")) {
+    if (d.sleepOnsetMin != null) {
+      const mins = (d.sleepOnsetMin + 720) % 1440;
+      const hh = Math.floor(mins / 60), mm = mins % 60;
+      const h12 = ((hh + 11) % 12) + 1;
+      $("#h-sleep-onset").textContent = `${h12}:${String(mm).padStart(2, "0")} ${hh < 12 ? "AM" : "PM"}`;
+    } else $("#h-sleep-onset").textContent = "—";
+  }
+  $("#h-sleep-awake") && ($("#h-sleep-awake").textContent = d.sleepAwakeMin != null ? `${d.sleepAwakeMin} min · ${d.sleepWakeups ?? 0}×` : "—");
   set("#h-weight", d.weightLbs, " lbs");
   set("#h-bodyfat", d.bodyFatPct, "%");
 
