@@ -2365,10 +2365,12 @@ function bindEvents() {
   });
   $("#workout-end").addEventListener("change", e => {
     const w = getWorkout(activeWorkoutId); if (!w) return;
+    // Setting an end time only records it — the session stays open for edits
+    // (back-logging a past workout sets times before the sets are even entered).
+    // A session closes via "Finish workout" or the 1-hour idle auto-save.
     w.endTime = e.target.value;
     saveState();
     renderDuration(w);
-    if (w.endTime) autoFinalize("Workout saved · end time set");
   });
   $("#workout-notes").addEventListener("input", e => {
     const w = getWorkout(activeWorkoutId); if (w) { w.notes = e.target.value; saveState(); }
