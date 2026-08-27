@@ -633,6 +633,61 @@ function mergeStates(local, remote) {
   out.lastModified = Math.max(local.lastModified || 0, remote.lastModified || 0);
   return out;
 }
+// Canonical forms for exercise identity
+const exNameKey = (name) => String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
+const exSlugId = (name) => "x-" + exNameKey(name).replace(/[^a-z0-9]+/g, "-");
+
+// Self-healing exercise dedupe. Historic bug: every device seeded its library
+// with RANDOM ids, so after a two-device merge the same name existed twice and
+// workout history split across the ids — "Lat Pulldown" showed no Prev even
+// with months of sessions. Group by normalized name, keep the most-referenced
+// id, relink every workout, and fold the duplicates' fields into the survivor.
+// Runs inside migrate() (i.e., on every load and every cloud merge) and is
+// idempotent, so devices converge no matter which order they sync in.
+function dedupeExercises(s) {
+  const refs = {};
+  for (const w of s.workouts || [])
+    for (const e of w.entries || []) refs[e.exerciseId] = (refs[e.exerciseId] || 0) + 1;
+
+  const groups = new Map();
+  for (const ex of s.exercises || []) {
+    const k = exNameKey(ex.name);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(ex);
+  }
+
+  const idMap = {};
+  const keep = [];
+  for (const [, list] of groups) {
+    if (list.length === 1) { keep.push(list[0]); continue; }
+    list.sort((x, y) =>
+      (refs[y.id] || 0) - (refs[x.id] || 0) ||                       // most history wins
+      (String(y.id).startsWith("x-") - String(x.id).startsWith("x-")) || // then deterministic ids
+      String(x.id).localeCompare(String(y.id)));
+    const canon = list[0];
+    for (const dupe of list.slice(1)) {
+      idMap[dupe.id] = canon.id;
+      // Fold anything useful the duplicate knew that the survivor doesn't
+      if ((!canon.type || canon.type === "strength") && dupe.type && dupe.type !== "strength") canon.type = dupe.type;
+      if (!canon.defaultRepRange && dupe.defaultRepRange) canon.defaultRepRange = dupe.defaultRepRange;
+      canon.days = Array.from(new Set([...(canon.days || []), ...(dupe.days || [])]));
+    }
+    keep.push(canon);
+  }
+
+  if (Object.keys(idMap).length) {
+    s.exercises = keep;
+    for (const w of s.workouts || []) {
+      let touched = false;
+      for (const e of w.entries || []) {
+        if (idMap[e.exerciseId]) { e.exerciseId = idMap[e.exerciseId]; touched = true; }
+      }
+      if (touched) w.updatedAt = Date.now();
+    }
+  }
+  return s;
+}
+
 function defaultProfile() {
   return { height: 70, weight: 175, age: 28, sex: "male", activity: "moderate", goals: { calories: null, protein: null } };
 }
@@ -643,7 +698,7 @@ function defaultState() {
   // they're just starting points, not personal data.
   return {
     schemaVersion: 1,
-    exercises: SEED.exercises.map(e => ({ id: uid(), ...e })),
+    exercises: SEED.exercises.map(e => ({ id: exSlugId(e.name), ...e })),
     days: JSON.parse(JSON.stringify(SEED.days)),
     templates: JSON.parse(JSON.stringify(DEFAULT_TEMPLATES)),
     workouts: [],
@@ -718,11 +773,12 @@ function migrate(s) {
 
   // Default type on any legacy exercise entry
   s.exercises.forEach(e => { if (!e.type) e.type = "strength"; });
+  dedupeExercises(s);
 
   // Sync any new seed exercises into existing state (idempotent, name-matched)
   SEED.exercises.forEach(seedEx => {
     if (!s.exercises.find(e => e.name.toLowerCase() === seedEx.name.toLowerCase())) {
-      s.exercises.push({ id: uid(), type: "strength", ...seedEx });
+      s.exercises.push({ id: exSlugId(seedEx.name), type: "strength", ...seedEx });
     }
   });
   // Sync new seed day entries (e.g. Calf Raises added to Day 5)
@@ -890,9 +946,10 @@ function startNewWorkout(templateId = "") {
 }
 
 function findOrCreateExercise(name) {
-  let ex = state.exercises.find(e => e.name.toLowerCase() === name.toLowerCase());
+  const norm = exNameKey(name);
+  let ex = state.exercises.find(e => exNameKey(e.name) === norm);
   if (!ex) {
-    ex = { id: uid(), name, defaultSets: 3, defaultRepRange: "", days: [] };
+    ex = { id: uid(), name: String(name).trim(), defaultSets: 3, defaultRepRange: "", days: [], updatedAt: Date.now() };
     state.exercises.push(ex);
   }
   return ex;
