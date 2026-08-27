@@ -880,6 +880,22 @@ function migrate(s) {
     }
   }
 
+  // Jacob's dictated template edits (Aug 26): Pull swaps the pushdown for Cable
+  // Face Pull; Push adds Decline; Mix drops Hammer Curl + the mislabeled
+  // "Standing Chest Press" in favor of Chest Press Machine + his top ab machine.
+  // Explicit lists (not diffs) so it lands identically no matter what each
+  // device's top-four pass computed. Runs once, after the top-four block.
+  if (s.templatesTopFourApplied && !s.templatesUserEditAug2026) {
+    const setT = (name, list) => {
+      const t = (s.templates || []).find(x => x.name === name);
+      if (t) { t.exercises = list; t.updatedAt = Date.now(); }
+    };
+    setT("Push", ["Bench Press", "Decline Chest Press - Barbell", "Overhead Military Press", "Dumbbell Side Lateral Raise", "Tricep Cable Pushdown"]);
+    setT("Pull", ["Preacher Curl", "Row Machine", "Lat Pulldown", "Cable Face Pull"]);
+    setT("Mix",  ["Row Machine", "Preacher Curl", "Chest Press Machine", "Arms UP AB Machine"]);
+    s.templatesUserEditAug2026 = true;
+  }
+
   // Add startTime/endTime to any workouts that predate the schema change
   s.workouts.forEach(w => {
     w.startTime ??= "";
