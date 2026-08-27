@@ -633,9 +633,29 @@ function mergeStates(local, remote) {
   out.lastModified = Math.max(local.lastModified || 0, remote.lastModified || 0);
   return out;
 }
-// Canonical forms for exercise identity
-const exNameKey = (name) => String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
+// Canonical forms for exercise identity. The key is punctuation-blind and
+// singularizes each word, so "Pull-Ups", "Pull ups" and "Pull Up" all match —
+// while staying conservative enough that "Row Machine" ≠ "Rowing Machine (Erg)".
+const exNameKey = (name) => String(name || "")
+  .trim().toLowerCase()
+  .replace(/[^a-z0-9]+/g, " ")
+  .split(/\s+/).filter(Boolean)
+  .map(w => (w.length > 3 && w.endsWith("s") && !w.endsWith("ss")) ? w.slice(0, -1) : w)
+  .join(" ");
 const exSlugId = (name) => "x-" + exNameKey(name).replace(/[^a-z0-9]+/g, "-");
+
+// Same-movement names that normalization alone can't connect. Keyed by
+// exNameKey(alias) → canonical display name. Reviewed against Jacob's real
+// library (Aug 2026); look-alikes that are genuinely different movements
+// (Chest Press Machine vs Seated CPM, Barbell vs Dumbbell Shrug, pushdown
+// attachments, assisted vs free pull-ups) are deliberately NOT aliased.
+const EXERCISE_ALIASES = {
+  [exNameKey("Calf Raises")]: { name: "Standing Calf Raise" },
+  [exNameKey("Treadmill 9 Incline")]: { name: "Incline Walk", type: "cardio" },
+  [exNameKey("Barbell Shoulder Press")]: { name: "Overhead Military Press" },
+};
+const resolveExerciseName = (name) => EXERCISE_ALIASES[exNameKey(name)]?.name || name;
+const exGroupKey = (name) => exNameKey(resolveExerciseName(name));
 
 // Self-healing exercise dedupe. Historic bug: every device seeded its library
 // with RANDOM ids, so after a two-device merge the same name existed twice and
@@ -651,22 +671,37 @@ function dedupeExercises(s) {
 
   const groups = new Map();
   for (const ex of s.exercises || []) {
-    const k = exNameKey(ex.name);
+    const k = exGroupKey(ex.name);
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(ex);
   }
 
   const idMap = {};
+  const nameMap = {};   // old display name → canonical display name (for templates)
   const keep = [];
   for (const [, list] of groups) {
-    if (list.length === 1) { keep.push(list[0]); continue; }
+    if (list.length === 1) {
+      const solo = list[0];
+      const meta = EXERCISE_ALIASES[exNameKey(solo.name)];
+      if (meta && meta.name !== solo.name) {
+        nameMap[solo.name] = meta.name;
+        solo.name = meta.name;
+        if (meta.type) solo.type = meta.type;
+      }
+      keep.push(solo);
+      continue;
+    }
     list.sort((x, y) =>
       (refs[y.id] || 0) - (refs[x.id] || 0) ||                       // most history wins
       (String(y.id).startsWith("x-") - String(x.id).startsWith("x-")) || // then deterministic ids
       String(x.id).localeCompare(String(y.id)));
     const canon = list[0];
+    const canonMeta = EXERCISE_ALIASES[exNameKey(canon.name)];
+    if (canonMeta && canonMeta.name !== canon.name) { nameMap[canon.name] = canonMeta.name; canon.name = canonMeta.name; }
+    if (canonMeta?.type) canon.type = canonMeta.type;
     for (const dupe of list.slice(1)) {
       idMap[dupe.id] = canon.id;
+      if (dupe.name !== canon.name) nameMap[dupe.name] = canon.name;
       // Fold anything useful the duplicate knew that the survivor doesn't
       if ((!canon.type || canon.type === "strength") && dupe.type && dupe.type !== "strength") canon.type = dupe.type;
       if (!canon.defaultRepRange && dupe.defaultRepRange) canon.defaultRepRange = dupe.defaultRepRange;
@@ -675,14 +710,28 @@ function dedupeExercises(s) {
     keep.push(canon);
   }
 
-  if (Object.keys(idMap).length) {
-    s.exercises = keep;
+  if (Object.keys(idMap).length) s.exercises = keep;
+  if (Object.keys(idMap).length || Object.keys(nameMap).length) {
     for (const w of s.workouts || []) {
       let touched = false;
       for (const e of w.entries || []) {
         if (idMap[e.exerciseId]) { e.exerciseId = idMap[e.exerciseId]; touched = true; }
       }
       if (touched) w.updatedAt = Date.now();
+    }
+    // Templates and day lists reference exercises BY NAME — follow the merge,
+    // and de-dupe in case a template listed both spellings.
+    for (const t of s.templates || []) {
+      const seen = new Set();
+      t.exercises = (t.exercises || [])
+        .map(n => nameMap[n] || n)
+        .filter(n => { const k = exGroupKey(n); if (seen.has(k)) return false; seen.add(k); return true; });
+    }
+    for (const day of Object.keys(s.days || {})) {
+      const seen = new Set();
+      s.days[day] = (s.days[day] || [])
+        .map(n => nameMap[n] || n)
+        .filter(n => { const k = exGroupKey(n); if (seen.has(k)) return false; seen.add(k); return true; });
     }
   }
   return s;
@@ -773,11 +822,10 @@ function migrate(s) {
 
   // Default type on any legacy exercise entry
   s.exercises.forEach(e => { if (!e.type) e.type = "strength"; });
-  dedupeExercises(s);
 
   // Sync any new seed exercises into existing state (idempotent, name-matched)
   SEED.exercises.forEach(seedEx => {
-    if (!s.exercises.find(e => e.name.toLowerCase() === seedEx.name.toLowerCase())) {
+    if (!s.exercises.find(e => exGroupKey(e.name) === exGroupKey(seedEx.name))) {
       s.exercises.push({ id: exSlugId(seedEx.name), type: "strength", ...seedEx });
     }
   });
@@ -790,6 +838,8 @@ function migrate(s) {
       }
     });
   });
+
+  dedupeExercises(s);
 
   // Add startTime/endTime to any workouts that predate the schema change
   s.workouts.forEach(w => {
@@ -946,8 +996,8 @@ function startNewWorkout(templateId = "") {
 }
 
 function findOrCreateExercise(name) {
-  const norm = exNameKey(name);
-  let ex = state.exercises.find(e => exNameKey(e.name) === norm);
+  const norm = exGroupKey(name);
+  let ex = state.exercises.find(e => exGroupKey(e.name) === norm);
   if (!ex) {
     ex = { id: uid(), name: String(name).trim(), defaultSets: 3, defaultRepRange: "", days: [], updatedAt: Date.now() };
     state.exercises.push(ex);
