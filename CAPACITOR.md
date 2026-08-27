@@ -431,3 +431,44 @@ app uses.
 
 Total code added to the web app: ~150 lines of JS and 15 lines of Info.plist
 XML.
+
+
+---
+
+## 11. Remote mode: ship web changes without reinstalling
+
+Bundled mode (the default above) freezes the web assets into the .app — every
+JS/CSS tweak needs a rebuild + reinstall. Once the native surface stabilizes
+(plugins, widgets, entitlements), flip the shell to load the LIVE site:
+
+```json
+// capacitor.config.json
+{
+  "server": { "url": "https://your-app.vercel.app" },
+  "ios": { "limitsNavigationsToAppBoundDomains": true }
+}
+```
+
+```xml
+<!-- Info.plist — Apple requires app-bound domains for Service Workers in WKWebView -->
+<key>WKAppBoundDomains</key>
+<array><string>your-app.vercel.app</string></array>
+```
+
+Register your service worker on the https origin (skip only `capacitor:`):
+the SW is what keeps cold-start working offline now that assets aren't bundled.
+Capacitor still injects the bridge into the remote page, so native plugins
+keep working exactly as before.
+
+After one final rebuild+install, `git push` IS the deploy: the phone picks up
+web changes on next launch (SW updates in the background — second launch after
+a deploy runs the new version).
+
+**Trade-offs, honestly:**
+- The very first launch (and any launch after iOS evicts the SW cache, which
+  is rare in an app container) needs network. Bundled mode never does.
+- Switching modes changes the WebView origin → localStorage/IndexedDB start
+  empty → users re-sign-in once; cloud state restores everything.
+- Native changes (new plugin, widget, entitlements, Info.plist) still need a
+  rebuild — that's the 1% case.
+- Keep versioned asset URLs + a versioned SW cache so updates are atomic.
