@@ -841,6 +841,45 @@ function migrate(s) {
 
   dedupeExercises(s);
 
+  // One-time template refresh: rebuild each split from the exercises the user
+  // ACTUALLY does — top 4 by session count within workouts carrying that
+  // template's label (ties → most recently done, then total sets). Runs only
+  // once there's real signal (≥8 completed workouts, ≥3 sessions per label) so
+  // an empty install can never blank the templates; pads from the existing
+  // template when history has fewer than 4 distinct exercises.
+  if (!s.templatesTopFourApplied) {
+    const completed = (s.workouts || []).filter(w => w.entries?.some(e => e.sets?.some(setHasData)));
+    if (completed.length >= 8) {
+      const byId = Object.fromEntries((s.exercises || []).map(e => [e.id, e]));
+      for (const t of s.templates || []) {
+        const sessions = completed.filter(w => (w.day || "") === t.name);
+        if (sessions.length < 3) continue;
+        const stats = new Map();
+        for (const w of sessions) for (const e of w.entries || []) {
+          if (!e.sets?.some(setHasData)) continue;
+          const st = stats.get(e.exerciseId) || { count: 0, last: "", sets: 0 };
+          st.count++; if (w.date > st.last) st.last = w.date;
+          st.sets += e.sets.filter(setHasData).length;
+          stats.set(e.exerciseId, st);
+        }
+        const isCardioTpl = exNameKey(t.name) === "cardio";
+        const ranked = Array.from(stats.entries())
+          .map(([id, st]) => ({ ex: byId[id], ...st }))
+          .filter(r => r.ex)
+          .filter(r => isCardioTpl ? exerciseType(r.ex) === "cardio" : exerciseType(r.ex) !== "cardio")
+          .sort((x, y) => y.count - x.count || y.last.localeCompare(x.last) || y.sets - x.sets);
+        if (!ranked.length) continue;
+        const names = ranked.slice(0, 4).map(r => r.ex.name);
+        for (const n of t.exercises || []) {
+          if (names.length >= 4) break;
+          if (!names.some(x => exGroupKey(x) === exGroupKey(n))) names.push(n);
+        }
+        if (JSON.stringify(names) !== JSON.stringify(t.exercises)) { t.exercises = names; t.updatedAt = Date.now(); }
+      }
+      s.templatesTopFourApplied = true;
+    }
+  }
+
   // Add startTime/endTime to any workouts that predate the schema change
   s.workouts.forEach(w => {
     w.startTime ??= "";
