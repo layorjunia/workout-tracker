@@ -653,6 +653,7 @@ const EXERCISE_ALIASES = {
   [exNameKey("Calf Raises")]: { name: "Standing Calf Raise" },
   [exNameKey("Treadmill 9 Incline")]: { name: "Incline Walk", type: "cardio" },
   [exNameKey("Barbell Shoulder Press")]: { name: "Overhead Military Press" },
+  [exNameKey("Standing Chest Press")]: { name: "Chest Press Machine" },
 };
 const resolveExerciseName = (name) => EXERCISE_ALIASES[exNameKey(name)]?.name || name;
 const exGroupKey = (name) => exNameKey(resolveExerciseName(name));
