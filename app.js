@@ -2979,10 +2979,12 @@ const isNativeApp = () => !!(window.Capacitor?.isNativePlatform?.());
 function init() {
   applyTheme();
   bindEvents();
+  // The service worker is the offline layer for BOTH the web PWA and the
+  // native shell (which loads the live site in remote mode — WKAppBoundDomains
+  // makes SWs available there). Only the legacy bundled capacitor:// scheme
+  // has no use for it.
+  if (location.protocol !== "capacitor:") registerServiceWorker();
   if (!isNativeApp()) {
-    // Browser-only: PWA plumbing. Inside the native app the OS owns install,
-    // offline caching, and storage persistence, so skip all three.
-    registerServiceWorker();
     requestPersistentStorage();
     maybeShowInstallBanner();
   } else {

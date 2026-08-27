@@ -55,6 +55,10 @@
 	<array>
 		<string>com.layorjunia.workouttracker.stepcheck</string>
 	</array>
+	<key>WKAppBoundDomains</key>
+	<array>
+		<string>layorjunia-workouts.vercel.app</string>
+	</array>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Workout Tracker reads heart rate, sleep, activity, and body composition metrics to show trends alongside your logged workouts.</string>
 	<key>NSHealthUpdateUsageDescription</key>

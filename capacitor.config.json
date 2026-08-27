@@ -4,10 +4,11 @@
   "webDir": "www",
   "ios": {
     "contentInset": "always",
-    "backgroundColor": "#0b0d10"
+    "backgroundColor": "#0b0d10",
+    "limitsNavigationsToAppBoundDomains": true
   },
   "server": {
-    "iosScheme": "capacitor"
+    "url": "https://layorjunia-workouts.vercel.app"
   },
   "packageClassList": [
     "StreakBridgePlugin"
