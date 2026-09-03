@@ -33,16 +33,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         let defaults = UserDefaults(suiteName: StreakBridgePlugin.appGroup)
         // Bootstrap: if the web layer hasn't written a snapshot yet, build one
         // with defaults so the widget always has real step data to show.
-        var snap: [String: Any]
-        if let json = defaults?.string(forKey: "streakSnapshot"),
-           let data = json.data(using: .utf8),
-           let parsed = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
-            snap = parsed
-        } else {
-            snap = ["goal": 10000, "streak": 0, "todayHit": false, "last7": [],
-                    "reminderEnabled": false, "reminderHour": 19, "calibration": 1.0,
-                    "workoutsThisWeek": 0, "workoutGoal": 3, "weekHit": false]
-        }
+        let existing = StreakBridgePlugin.readSnapshot(defaults)
+        var snap: [String: Any] = existing ?? [
+            "goal": 10000, "streak": 0, "todayHit": false, "last7": [],
+            "reminderEnabled": false, "reminderHour": 19, "calibration": 1.0,
+            "workoutsThisWeek": 0, "workoutGoal": 3, "weekHit": false]
 
         let goal = snap["goal"] as? Int ?? 10000
         let store = HKHealthStore()
@@ -54,16 +49,21 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         let predicate = HKQuery.predicateForSamples(withStart: start, end: Date())
         let calibration = snap["calibration"] as? Double ?? 1.0
         let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, stats, _ in
-            let steps = Int((stats?.sumQuantity()?.doubleValue(for: .count()) ?? 0) * calibration)
+            let day = StreakBridgePlugin.localDay()
+            var steps = Int((stats?.sumQuantity()?.doubleValue(for: .count()) ?? 0) * calibration)
+            // HealthKit can return 0/partial while the phone is locked or mid-sync.
+            // Same-day values are monotonic: never write a lower number than the
+            // snapshot already holds, and never zero a day that had steps.
+            if snap["date"] as? String == day, let exSteps = snap["stepsToday"] as? Int {
+                steps = max(steps, exSteps)
+            }
             let hit = steps >= goal
+            snap["date"] = day
             snap["stepsToday"] = steps
             snap["todayHit"] = hit
             snap["updatedAt"] = Date().timeIntervalSince1970
-            if let out = try? JSONSerialization.data(withJSONObject: snap),
-               let str = String(data: out, encoding: .utf8) {
-                defaults?.set(str, forKey: "streakSnapshot")
-            }
-            if #available(iOS 14.0, *) { WidgetCenter.shared.reloadAllTimelines() }
+            StreakBridgePlugin.writeSnapshot(snap, to: defaults)
+            StreakBridgePlugin.maybeReloadWidgets(old: existing, new: snap, defaults: defaults)
             StreakBridgePlugin.rescheduleReminder(
                 enabled: snap["reminderEnabled"] as? Bool ?? false,
                 hour: snap["reminderHour"] as? Int ?? 19,

@@ -21,10 +21,62 @@ public class StreakBridgePlugin: CAPPlugin, CAPBridgedPlugin {
     static let appGroup = "group.com.layorjunia.workouttracker"
     static let notifId = "step-goal-reminder"
 
+    static func localDay() -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = .current
+        return f.string(from: Date())
+    }
+
+    static func readSnapshot(_ defaults: UserDefaults?) -> [String: Any]? {
+        guard let json = defaults?.string(forKey: "streakSnapshot"),
+              let data = json.data(using: .utf8),
+              let snap = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+        return snap
+    }
+
+    static func writeSnapshot(_ snap: [String: Any], to defaults: UserDefaults?) {
+        if let data = try? JSONSerialization.data(withJSONObject: snap),
+           let json = String(data: data, encoding: .utf8) {
+            defaults?.set(json, forKey: "streakSnapshot")
+        }
+    }
+
+    /// Widget reloads draw from a limited daily budget — when it runs out, iOS
+    /// silently pins the widget to a stale entry. Reload only when the data
+    /// meaningfully changed, and at most every 4 minutes.
+    static func maybeReloadWidgets(old: [String: Any]?, new: [String: Any], defaults: UserDefaults?) {
+        guard #available(iOS 14.0, *) else { return }
+        let bucket = { (s: [String: Any]) -> String in
+            let steps = (s["stepsToday"] as? Int ?? 0) / 250
+            return "\(steps)|\(s["todayHit"] as? Bool ?? false)|\(s["streak"] as? Int ?? 0)|\(s["workoutsThisWeek"] as? Int ?? 0)|\(s["weekHit"] as? Bool ?? false)|\(s["goal"] as? Int ?? 0)|\(s["date"] as? String ?? "")"
+        }
+        let changed = old == nil || bucket(old!) != bucket(new)
+        let last = defaults?.double(forKey: "lastWidgetReload") ?? 0
+        let now = Date().timeIntervalSince1970
+        if changed && now - last > 240 {
+            defaults?.set(now, forKey: "lastWidgetReload")
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
+
     @objc func update(_ call: CAPPluginCall) {
         let defaults = UserDefaults(suiteName: Self.appGroup)
+        let existing = Self.readSnapshot(defaults)
+        let day = Self.localDay()
+        var steps = call.getInt("stepsToday") ?? 0
+        // Same-day steps are monotonic: a lower reading (partial HealthKit sync,
+        // pre-calibration value) never walks the widget backwards. A calibration
+        // change is the one legitimate reason the number can drop.
+        if let ex = existing,
+           ex["date"] as? String == day,
+           let exSteps = ex["stepsToday"] as? Int,
+           abs((ex["calibration"] as? Double ?? 1.0) - (call.getDouble("calibration") ?? 1.0)) < 0.001 {
+            steps = max(steps, exSteps)
+        }
         let snapshot: [String: Any] = [
-            "stepsToday": call.getInt("stepsToday") ?? 0,
+            "date": day,
+            "stepsToday": steps,
             "goal": call.getInt("goal") ?? 10000,
             "streak": call.getInt("streak") ?? 0,
             "todayHit": call.getBool("todayHit") ?? false,
@@ -37,18 +89,13 @@ public class StreakBridgePlugin: CAPPlugin, CAPBridgedPlugin {
             "weekHit": call.getBool("weekHit") ?? false,
             "updatedAt": Date().timeIntervalSince1970,
         ]
-        if let data = try? JSONSerialization.data(withJSONObject: snapshot),
-           let json = String(data: data, encoding: .utf8) {
-            defaults?.set(json, forKey: "streakSnapshot")
-        }
-        if #available(iOS 14.0, *) {
-            WidgetCenter.shared.reloadAllTimelines()
-        }
+        Self.writeSnapshot(snapshot, to: defaults)
+        Self.maybeReloadWidgets(old: existing, new: snapshot, defaults: defaults)
         Self.rescheduleReminder(
             enabled: call.getBool("reminderEnabled") ?? false,
             hour: call.getInt("reminderHour") ?? 19,
-            todayHit: call.getBool("todayHit") ?? false,
-            stepsToday: call.getInt("stepsToday") ?? 0,
+            todayHit: (call.getBool("todayHit") ?? false) || steps >= (call.getInt("goal") ?? 10000),
+            stepsToday: steps,
             goal: call.getInt("goal") ?? 10000,
             streak: call.getInt("streak") ?? 0
         )

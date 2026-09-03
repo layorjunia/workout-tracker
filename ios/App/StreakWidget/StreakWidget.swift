@@ -44,12 +44,22 @@ struct StreakSnapshot: Decodable {
 }
 
 func loadSnapshot() -> StreakSnapshot {
-    guard
-        let json = UserDefaults(suiteName: "group.com.layorjunia.workouttracker")?.string(forKey: "streakSnapshot"),
-        let data = json.data(using: .utf8),
-        let snap = try? JSONDecoder().decode(StreakSnapshot.self, from: data)
-    else { return StreakSnapshot() }
-    return snap
+    // Primary: the shared App Group container. On success, keep a last-good
+    // copy in this extension's own defaults so a transiently unreadable
+    // container (e.g. right after a reboot) shows the previous truth instead
+    // of zeroing the streak.
+    if let json = UserDefaults(suiteName: "group.com.layorjunia.workouttracker")?.string(forKey: "streakSnapshot"),
+       let data = json.data(using: .utf8),
+       let snap = try? JSONDecoder().decode(StreakSnapshot.self, from: data) {
+        UserDefaults.standard.set(json, forKey: "lastGoodSnapshot")
+        return snap
+    }
+    if let json = UserDefaults.standard.string(forKey: "lastGoodSnapshot"),
+       let data = json.data(using: .utf8),
+       let snap = try? JSONDecoder().decode(StreakSnapshot.self, from: data) {
+        return snap
+    }
+    return StreakSnapshot()
 }
 
 struct StreakEntry: TimelineEntry {

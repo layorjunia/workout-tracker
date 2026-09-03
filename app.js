@@ -443,6 +443,7 @@ function syncStreakToNative() {
   if (!bridge) return;
   const s = streakInfo();
   bridge.update({
+    date: todayISO(),
     stepsToday: Math.round(s.todaySteps), goal: s.goal, streak: s.streak, todayHit: s.todayHit,
     last7: s.last14.slice(-7).map(d => ({ date: d.date, hit: d.hit, known: d.known })),
     reminderEnabled: !!state.settings.stepReminder,
