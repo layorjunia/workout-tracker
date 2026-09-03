@@ -59,10 +59,28 @@
     return samples[0].value;
   }
 
+  // Day total via HKStatistics (queryAggregated), NOT a raw-sample sum: when
+  // both the iPhone and the Watch record the same walk, raw samples overlap
+  // and a naive sum double-counts. The statistics query de-duplicates exactly
+  // like the Health app's own number — and it's what the widget's native
+  // refresh uses, so every surface agrees on today's count.
   async function sumToday(dataType) {
-    const samples = await read(dataType, startOfToday(), 10000);
-    if (!samples.length) return null;
-    return samples.reduce((acc, s) => acc + (Number(s.value) || 0), 0);
+    const h = health();
+    try {
+      const { samples } = await h.queryAggregated({
+        dataType, startDate: startOfToday(), endDate: iso(now()), bucket: "day", aggregation: "sum",
+      });
+      if (samples && samples.length) {
+        const v = samples.reduce((acc, s) => acc + (Number(s.value) || 0), 0);
+        return v > 0 ? v : null;
+      }
+      return null;
+    } catch (e) {
+      console.warn(`[health] aggregated ${dataType} failed, falling back to sample sum:`, e?.message || e);
+      const raw = await read(dataType, startOfToday(), 10000);
+      if (!raw.length) return null;
+      return raw.reduce((acc, s) => acc + (Number(s.value) || 0), 0);
+    }
   }
 
   // Analyze last night: find the main sleep block (segments joined unless the
