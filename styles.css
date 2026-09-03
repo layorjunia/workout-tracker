@@ -596,6 +596,14 @@ details.setup .setup-list { margin-top: 8px; }
 .streak-dot.today i { outline: 2px solid var(--accent); outline-offset: 1px; }
 .streak-dot span { font-size: 8.5px; color: var(--text-faint); font-weight: 700; }
 
+.wk-goal { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 13.5px; }
+.wk-goal span { flex: 0 0 auto; color: var(--text-dim); font-weight: 600; }
+.wk-goal strong { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.wk-bar { flex: 1; height: 8px; border-radius: 999px; background: var(--bg-elev-3); overflow: hidden; }
+.wk-bar i { display: block; height: 100%; border-radius: 999px; background: var(--accent); transition: width 0.4s ease; }
+.wk-goal.hit .wk-bar i { background: var(--success); }
+.wk-goal.hit strong { color: var(--success); }
+
 .bw-big { font-size: 30px; font-weight: 800; letter-spacing: -0.025em; line-height: 1; }
 .bw-list { margin-top: 10px; }
 .bw-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px dashed var(--border); font-size: 13.5px; }

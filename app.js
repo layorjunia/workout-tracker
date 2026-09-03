@@ -392,6 +392,17 @@ function stepCalibration() {
 function calSteps(raw) {
   return raw == null ? null : Math.round(raw * stepCalibration());
 }
+// Weekly workout goal: completed sessions (with logged data) in the current
+// Monday-start week.
+function workoutsThisWeek() {
+  const now = new Date(todayISO() + "T00:00:00");
+  const mon = new Date(now); mon.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  const start = isoDateLocal(mon);
+  return state.workouts.filter(w =>
+    w.id !== activeWorkoutId && w.date >= start && w.date <= todayISO() &&
+    w.entries?.some(e => e.sets?.some(setHasData))).length;
+}
+
 // Streak milestone ladder — mirrored in StreakWidget.swift
 function streakTier(streak) {
   if (streak <= 0) return { emoji: "·", label: "", weeks: 0, milestone: false };
@@ -420,7 +431,10 @@ function streakInfo() {
   const todayHit = days[0].hit;
   if (todayHit) streak++;
   const last14 = days.slice(0, 14).reverse();
-  return { goal, streak, todayHit, todaySteps: todaySteps ?? 0, last14, pct: Math.min(1, (todaySteps || 0) / goal) };
+  const wk = workoutsThisWeek();
+  const wkGoal = state.settings.workoutGoalPerWeek || 3;
+  return { goal, streak, todayHit, todaySteps: todaySteps ?? 0, last14, pct: Math.min(1, (todaySteps || 0) / goal),
+           workouts: wk, workoutGoal: wkGoal, weekHit: wk >= wkGoal };
 }
 
 // Push the streak snapshot to the native side (widget + notifications). No-op on web.
@@ -434,6 +448,7 @@ function syncStreakToNative() {
     reminderEnabled: !!state.settings.stepReminder,
     reminderHour: state.settings.stepReminderHour || 19,
     calibration: stepCalibration(),
+    workoutsThisWeek: s.workouts, workoutGoal: s.workoutGoal, weekHit: s.weekHit,
     updatedAt: Date.now(),
   }).catch(() => {});
 }
@@ -797,6 +812,7 @@ function migrate(s) {
   s.settings.stepReminderHour ??= 19;   // 7 pm local
   s.settings.stepCalApple ??= null;     // "Apple Health says X…"
   s.settings.stepCalActual ??= null;    // "…but I actually walked Y" → factor Y/X
+  s.settings.workoutGoalPerWeek ??= 3;
   s.profile = Object.assign(defaultProfile(), s.profile || {});
   s.profile.goals = Object.assign({ calories: null, protein: null }, s.profile.goals || {});
   s.nutrition ??= [];
@@ -2300,6 +2316,7 @@ function renderStreakCard() {
   const calNote = stepCalibration() !== 1 && rawToday != null
     ? `<p class="muted small" style="margin:10px 0 0">Apple counted ${fmt(rawToday)} → calibrated ${fmt(calSteps(rawToday))}.</p>` : "";
   const gI = $("#setting-step-goal"); if (gI && !gI.value) gI.value = state.settings.stepGoal;
+  const wG = $("#setting-workout-goal"); if (wG && !wG.value) wG.value = state.settings.workoutGoalPerWeek;
   const rT = $("#setting-step-reminder"); if (rT) rT.checked = !!state.settings.stepReminder;
   const rH = $("#setting-step-reminder-hour"); if (rH && !rH.value) rH.value = state.settings.stepReminderHour;
   const s = streakInfo();
@@ -2324,7 +2341,20 @@ function renderStreakCard() {
       </div>
     </div>
     <div class="streak-days">${dots}</div>
-    ${calNote}`;
+    <div class="wk-goal${s.weekHit ? " hit" : ""}">
+      <span>🏋️ Workouts this week</span>
+      <div class="wk-bar"><i style="width:${Math.min(100, (s.workouts / s.workoutGoal) * 100).toFixed(0)}%"></i></div>
+      <strong>${s.workouts}/${s.workoutGoal}${s.weekHit ? " ✓" : ""}</strong>
+    </div>
+    ${calNote}
+    <p class="muted small native-only" id="widget-status" style="margin:8px 0 0"></p>`;
+  const bridge = window.Capacitor?.Plugins?.StreakBridge;
+  if (bridge?.status) bridge.status().then(st => {
+    const el = $("#widget-status"); if (!el) return;
+    el.textContent = st.hasSnapshot
+      ? `Widget sees: ${fmt(st.stepsToday ?? 0)} steps · updated ${new Date(st.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+      : "Widget: no snapshot yet — open this tab once more or reopen the app.";
+  }).catch(() => {});
   const calA = $("#setting-cal-apple"), calB = $("#setting-cal-actual");
   if (calA && !calA.value && state.settings.stepCalApple) calA.value = state.settings.stepCalApple;
   if (calB && !calB.value && state.settings.stepCalActual) calB.value = state.settings.stepCalActual;
@@ -2679,6 +2709,12 @@ function bindEvents() {
       catch {}
     }
     syncStreakToNative();
+  };
+  const wkG = $("#setting-workout-goal");
+  if (wkG) wkG.onchange = e => {
+    state.settings.workoutGoalPerWeek = Math.min(14, Math.max(1, Math.round(parseNum(e.target.value)) || 3));
+    e.target.value = state.settings.workoutGoalPerWeek;
+    saveState(); renderStreakCard();
   };
   const remH = $("#setting-step-reminder-hour");
   if (remH) remH.onchange = e => { state.settings.stepReminderHour = Math.min(22, Math.max(8, parseInt(e.target.value) || 19)); e.target.value = state.settings.stepReminderHour; saveState(); syncStreakToNative(); };

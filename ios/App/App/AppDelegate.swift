@@ -31,11 +31,18 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     static func runStepCheck(task: BGAppRefreshTask?) {
         scheduleStepCheck()   // always keep the chain alive
         let defaults = UserDefaults(suiteName: StreakBridgePlugin.appGroup)
-        guard
-            let json = defaults?.string(forKey: "streakSnapshot"),
-            let data = json.data(using: .utf8),
-            var snap = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-        else { task?.setTaskCompleted(success: true); return }
+        // Bootstrap: if the web layer hasn't written a snapshot yet, build one
+        // with defaults so the widget always has real step data to show.
+        var snap: [String: Any]
+        if let json = defaults?.string(forKey: "streakSnapshot"),
+           let data = json.data(using: .utf8),
+           let parsed = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+            snap = parsed
+        } else {
+            snap = ["goal": 10000, "streak": 0, "todayHit": false, "last7": [],
+                    "reminderEnabled": false, "reminderHour": 19, "calibration": 1.0,
+                    "workoutsThisWeek": 0, "workoutGoal": 3, "weekHit": false]
+        }
 
         let goal = snap["goal"] as? Int ?? 10000
         let store = HKHealthStore()

@@ -9,7 +9,38 @@ struct StreakSnapshot: Decodable {
     var streak: Int = 0
     var todayHit: Bool = false
     var last7: [Day] = []
-    struct Day: Decodable { var date: String; var hit: Bool; var known: Bool }
+    var workoutsThisWeek: Int = 0
+    var workoutGoal: Int = 3
+    var weekHit: Bool = false
+    struct Day: Decodable {
+        var date: String = ""
+        var hit: Bool = false
+        var known: Bool = false
+        enum K: String, CodingKey { case date, hit, known }
+        init(from dec: Decoder) throws {
+            let c = try dec.container(keyedBy: K.self)
+            date = (try? c.decodeIfPresent(String.self, forKey: .date)) ?? ""
+            hit = (try? c.decodeIfPresent(Bool.self, forKey: .hit)) ?? false
+            known = (try? c.decodeIfPresent(Bool.self, forKey: .known)) ?? false
+        }
+    }
+    init() {}
+    init(stepsToday: Int, goal: Int, streak: Int, todayHit: Bool, last7: [Day]) {
+        self.stepsToday = stepsToday; self.goal = goal; self.streak = streak
+        self.todayHit = todayHit; self.last7 = last7
+    }
+    enum K: String, CodingKey { case stepsToday, goal, streak, todayHit, last7, workoutsThisWeek, workoutGoal, weekHit }
+    init(from dec: Decoder) throws {
+        let c = try dec.container(keyedBy: K.self)
+        stepsToday = (try? c.decodeIfPresent(Int.self, forKey: .stepsToday)) ?? 0
+        goal = (try? c.decodeIfPresent(Int.self, forKey: .goal)) ?? 10000
+        streak = (try? c.decodeIfPresent(Int.self, forKey: .streak)) ?? 0
+        todayHit = (try? c.decodeIfPresent(Bool.self, forKey: .todayHit)) ?? false
+        last7 = (try? c.decodeIfPresent([Day].self, forKey: .last7)) ?? []
+        workoutsThisWeek = (try? c.decodeIfPresent(Int.self, forKey: .workoutsThisWeek)) ?? 0
+        workoutGoal = (try? c.decodeIfPresent(Int.self, forKey: .workoutGoal)) ?? 3
+        weekHit = (try? c.decodeIfPresent(Bool.self, forKey: .weekHit)) ?? false
+    }
 }
 
 func loadSnapshot() -> StreakSnapshot {
@@ -70,12 +101,13 @@ struct RingView: View {
     let pct: Double
     let done: Bool
     let tint: Color
+    var lineWidth: CGFloat = 7
     var body: some View {
         ZStack {
-            Circle().stroke(Color.primary.opacity(0.12), lineWidth: 8)
+            Circle().stroke(Color.primary.opacity(0.12), lineWidth: lineWidth)
             Circle()
                 .trim(from: 0, to: max(0.02, min(1, pct)))
-                .stroke(done ? Color.green : tint, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                .stroke(done ? Color.green : tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
     }
@@ -109,6 +141,9 @@ struct StreakWidgetView: View {
                     }
                     Text("\(s.stepsToday.formatted()) / \(s.goal.formatted()) steps")
                         .font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
+                    Text("🏋️ \(s.workoutsThisWeek)/\(s.workoutGoal) workouts\(s.weekHit ? " ✓" : "")")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(s.weekHit ? Color.green : Color.purple)
                     HStack(spacing: 5) {
                         ForEach(Array(s.last7.enumerated()), id: \.offset) { _, d in
                             RoundedRectangle(cornerRadius: 3)
@@ -132,15 +167,19 @@ struct StreakWidgetView: View {
         }
     }
 
+    // Outer ring: today's steps. Inner ring: workouts this week vs goal.
     func ring(s: StreakSnapshot, pct: Double, tier: Tier) -> some View {
-        ZStack {
-            RingView(pct: pct, done: s.todayHit, tint: s.streak >= 7 ? tier.color : .blue)
+        let wkPct = s.workoutGoal > 0 ? Double(s.workoutsThisWeek) / Double(s.workoutGoal) : 0
+        return ZStack {
+            RingView(pct: pct, done: s.todayHit, tint: s.streak >= 7 ? tier.color : .blue, lineWidth: 7)
+            RingView(pct: wkPct, done: s.weekHit, tint: .purple, lineWidth: 5)
+                .frame(width: 46, height: 46)
             Text(fmtSteps(s.stepsToday))
-                .font(.system(size: s.stepsToday >= 10000 ? 15 : 17, weight: .heavy))
-                .minimumScaleFactor(0.6).lineLimit(1)
-                .frame(maxWidth: 52)
+                .font(.system(size: 13, weight: .heavy))
+                .minimumScaleFactor(0.5).lineLimit(1)
+                .frame(maxWidth: 34)
         }
-        .frame(width: 64, height: 64)
+        .frame(width: 66, height: 66)
     }
 
     func flame(s: StreakSnapshot, tier: Tier) -> some View {

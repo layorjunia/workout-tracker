@@ -15,6 +15,7 @@ public class StreakBridgePlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "update", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "requestNotifications", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "status", returnType: CAPPluginReturnPromise),
     ]
 
     static let appGroup = "group.com.layorjunia.workouttracker"
@@ -31,6 +32,9 @@ public class StreakBridgePlugin: CAPPlugin, CAPBridgedPlugin {
             "reminderEnabled": call.getBool("reminderEnabled") ?? false,
             "reminderHour": call.getInt("reminderHour") ?? 19,
             "calibration": call.getDouble("calibration") ?? 1.0,
+            "workoutsThisWeek": call.getInt("workoutsThisWeek") ?? 0,
+            "workoutGoal": call.getInt("workoutGoal") ?? 3,
+            "weekHit": call.getBool("weekHit") ?? false,
             "updatedAt": Date().timeIntervalSince1970,
         ]
         if let data = try? JSONSerialization.data(withJSONObject: snapshot),
@@ -49,6 +53,23 @@ public class StreakBridgePlugin: CAPPlugin, CAPBridgedPlugin {
             streak: call.getInt("streak") ?? 0
         )
         call.resolve()
+    }
+
+    /// Diagnostic: what does the widget's shared container actually hold?
+    /// Surfaced on the in-app streak card so snapshot problems are visible.
+    @objc func status(_ call: CAPPluginCall) {
+        let defaults = UserDefaults(suiteName: Self.appGroup)
+        guard let json = defaults?.string(forKey: "streakSnapshot"),
+              let data = json.data(using: .utf8),
+              let snap = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            call.resolve(["hasSnapshot": false])
+            return
+        }
+        call.resolve([
+            "hasSnapshot": true,
+            "stepsToday": snap["stepsToday"] as? Int ?? 0,
+            "updatedAt": ((snap["updatedAt"] as? Double) ?? 0) * 1000,
+        ])
     }
 
     @objc func requestNotifications(_ call: CAPPluginCall) {
