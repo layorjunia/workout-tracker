@@ -45,8 +45,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         let start = Calendar.current.startOfDay(for: Date())
         let predicate = HKQuery.predicateForSamples(withStart: start, end: Date())
+        let calibration = snap["calibration"] as? Double ?? 1.0
         let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, stats, _ in
-            let steps = Int(stats?.sumQuantity()?.doubleValue(for: .count()) ?? 0)
+            let steps = Int((stats?.sumQuantity()?.doubleValue(for: .count()) ?? 0) * calibration)
             let hit = steps >= goal
             snap["stepsToday"] = steps
             snap["todayHit"] = hit
@@ -78,13 +79,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         Self.scheduleStepCheck()
     }
 
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        // Self-heal the widget snapshot from HealthKit on every open, so the
+        // widget never shows stale numbers even if the web layer hasn't synced.
+        Self.runStepCheck(task: nil)
+    }
+
     func applicationWillEnterForeground(_ application: UIApplication) {
         // Called as part of the transition from the background to the active state; here you can undo many of the changes made on entering the background.
     }
 
-    func applicationDidBecomeActive(_ application: UIApplication) {
-        // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
-    }
+
 
     func applicationWillTerminate(_ application: UIApplication) {
         // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.

@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <title>Workout Tracker</title>
-<link rel="stylesheet" href="styles.css?v=34">
+<link rel="stylesheet" href="styles.css?v=35">
 </head>
 <body>
 
@@ -337,6 +337,17 @@
         <span>Notify me if I haven't hit my goal</span>
         <input type="checkbox" id="setting-step-reminder" class="switch">
       </label>
+      <div class="row" style="margin-top:12px; align-items:flex-end">
+        <label class="col" style="margin:0">
+          <span class="label">Apple Health says</span>
+          <input type="number" id="setting-cal-apple" inputmode="numeric" placeholder="7000">
+        </label>
+        <label class="col" style="margin:0">
+          <span class="label">I actually walked</span>
+          <input type="number" id="setting-cal-actual" inputmode="numeric" placeholder="10000">
+        </label>
+      </div>
+      <p class="muted small" id="cal-factor-line" style="margin:8px 0 0"></p>
       <p class="muted small native-only" style="margin:8px 0 0">Also add the <strong>Workout Streak</strong> widget: long-press your home screen → + → Workout Tracker.</p>
       <p class="muted small web-only" style="margin:8px 0 0">Reminders and the home-screen widget work in the iPhone app.</p>
     </div>
@@ -641,10 +652,10 @@
   </button>
 </nav>
 
-<script src="vendor/chart.umd.js?v=34"></script>
-<script src="app.js?v=34"></script>
-<script src="analytics.js?v=34"></script>
-<script type="module" src="vendor/firebase-sync.bundle.js?v=34"></script>
-<script src="capacitor-health.js?v=34"></script>
+<script src="vendor/chart.umd.js?v=35"></script>
+<script src="app.js?v=35"></script>
+<script src="analytics.js?v=35"></script>
+<script type="module" src="vendor/firebase-sync.bundle.js?v=35"></script>
+<script src="capacitor-health.js?v=35"></script>
 </body>
 </html>

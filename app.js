@@ -381,15 +381,35 @@ function stepsFor(date) {
   const v = state.health?.daily?.[date]?.stepsToday;
   return Number.isFinite(+v) ? +v : null;
 }
+// Apple Health undercounts Jacob's steps (measured: 7k reported ≈ 10k real).
+// Raw HealthKit values stay stored untouched; the factor applies at read time,
+// so changing it recalibrates all history instantly.
+function stepCalibration() {
+  const a = +state.settings.stepCalApple, b = +state.settings.stepCalActual;
+  if (a > 0 && b > 0) return Math.min(3, Math.max(0.5, b / a));
+  return 1;
+}
+function calSteps(raw) {
+  return raw == null ? null : Math.round(raw * stepCalibration());
+}
+// Streak milestone ladder — mirrored in StreakWidget.swift
+function streakTier(streak) {
+  if (streak <= 0) return { emoji: "·", label: "", weeks: 0, milestone: false };
+  const w = Math.floor(streak / 7);
+  if (w === 0) return { emoji: "🔥", label: "", weeks: 0, milestone: false };
+  const emoji = w >= 8 ? "🐐" : ["⚡", "🌟", "💎", "👑", "👑", "🏆", "🏆"][w - 1];
+  const label = w >= 4 && w < 6 ? "1 MONTH+" : `WEEK ${w}`;
+  return { emoji, label, weeks: w, milestone: streak % 7 === 0 };
+}
 function streakInfo() {
   const goal = state.settings.stepGoal || 10000;
   const today = todayISO();
-  const todaySteps = stepsFor(today) ?? (state.health?.data?.stepsToday ?? null);
+  const todaySteps = calSteps(stepsFor(today) ?? (state.health?.data?.stepsToday ?? null));
   const days = [];
   for (let i = 0; i < 60; i++) {
     const d = new Date(today + "T00:00:00"); d.setDate(d.getDate() - i);
     const iso = isoDateLocal(d);
-    const steps = iso === today ? todaySteps : stepsFor(iso);
+    const steps = iso === today ? todaySteps : calSteps(stepsFor(iso));
     days.push({ date: iso, steps, hit: steps != null && steps >= goal, known: steps != null });
   }
   let streak = 0;
@@ -413,6 +433,7 @@ function syncStreakToNative() {
     last7: s.last14.slice(-7).map(d => ({ date: d.date, hit: d.hit, known: d.known })),
     reminderEnabled: !!state.settings.stepReminder,
     reminderHour: state.settings.stepReminderHour || 19,
+    calibration: stepCalibration(),
     updatedAt: Date.now(),
   }).catch(() => {});
 }
@@ -774,6 +795,8 @@ function migrate(s) {
   s.settings.stepGoal ??= 10000;
   s.settings.stepReminder ??= false;
   s.settings.stepReminderHour ??= 19;   // 7 pm local
+  s.settings.stepCalApple ??= null;     // "Apple Health says X…"
+  s.settings.stepCalActual ??= null;    // "…but I actually walked Y" → factor Y/X
   s.profile = Object.assign(defaultProfile(), s.profile || {});
   s.profile.goals = Object.assign({ calories: null, protein: null }, s.profile.goals || {});
   s.nutrition ??= [];
@@ -2269,6 +2292,13 @@ function updateMacroDisplay(n) {
 
 function renderStreakCard() {
   const host = $("#streak-card"); if (!host) return;
+  const tier = streakTier(streakInfo().streak);
+  const toNext = streakInfo().streak > 0 ? 7 - (streakInfo().streak % 7) : null;
+  const nextTier = streakTier((Math.floor(streakInfo().streak / 7) + 1) * 7);
+  const nextLine = toNext && toNext < 7 ? `<div class="muted small">${toNext} day${toNext > 1 ? "s" : ""} to ${nextTier.emoji} ${nextTier.label}</div>` : "";
+  const rawToday = stepsFor(todayISO()) ?? state.health?.data?.stepsToday;
+  const calNote = stepCalibration() !== 1 && rawToday != null
+    ? `<p class="muted small" style="margin:10px 0 0">Apple counted ${fmt(rawToday)} → calibrated ${fmt(calSteps(rawToday))}.</p>` : "";
   const gI = $("#setting-step-goal"); if (gI && !gI.value) gI.value = state.settings.stepGoal;
   const rT = $("#setting-step-reminder"); if (rT) rT.checked = !!state.settings.stepReminder;
   const rH = $("#setting-step-reminder-hour"); if (rH && !rH.value) rH.value = state.settings.stepReminderHour;
@@ -2287,11 +2317,21 @@ function renderStreakCard() {
         <div class="ring-label"><strong>${fmt(s.todaySteps)}</strong><span>of ${fmt(s.goal)}</span></div>
       </div>
       <div class="streak-count">
-        <div class="streak-flame ${s.streak > 0 ? "lit" : ""}">${s.streak > 0 ? "🔥" : "·"} <strong>${s.streak}</strong></div>
+        <div class="streak-flame ${s.streak > 0 ? "lit" : ""}">${tier.emoji} <strong>${s.streak}</strong></div>
         <div class="muted small">day streak${s.todayHit ? " · today ✓" : s.streak > 0 ? " · today pending" : ""}</div>
+        ${tier.weeks > 0 ? `<div class="streak-tier${tier.milestone ? " milestone" : ""}">${tier.milestone ? "✨ " : ""}${tier.label}${tier.milestone ? " ✨" : ""}</div>` : ""}
+        ${nextLine}
       </div>
     </div>
-    <div class="streak-days">${dots}</div>`;
+    <div class="streak-days">${dots}</div>
+    ${calNote}`;
+  const calA = $("#setting-cal-apple"), calB = $("#setting-cal-actual");
+  if (calA && !calA.value && state.settings.stepCalApple) calA.value = state.settings.stepCalApple;
+  if (calB && !calB.value && state.settings.stepCalActual) calB.value = state.settings.stepCalActual;
+  const fl = $("#cal-factor-line");
+  if (fl) fl.textContent = stepCalibration() !== 1
+    ? `Calibration ×${stepCalibration().toFixed(2)} — streak, widget, and reminders use your real steps.`
+    : "Optional: if Apple Health undercounts you, enter a measured pair and everything recalibrates.";
   syncStreakToNative();
 }
 
@@ -2393,7 +2433,7 @@ function renderHealthSnapshot() {
   set("#h-resting-hr", d.restingHR, " bpm");
   set("#h-hrv", d.hrv, " ms");
   set("#h-spo2", d.bloodOxygen, "%");
-  set("#h-steps", d.stepsToday, "");
+  set("#h-steps", calSteps(d.stepsToday), stepCalibration() !== 1 ? "" : "");
   set("#h-distance", d.distanceMiToday, " mi");
   set("#h-active", d.activeEnergyToday, " kcal");
   set("#h-resting-kcal", d.restingEnergyToday, " kcal");
@@ -2643,6 +2683,16 @@ function bindEvents() {
   const remH = $("#setting-step-reminder-hour");
   if (remH) remH.onchange = e => { state.settings.stepReminderHour = Math.min(22, Math.max(8, parseInt(e.target.value) || 19)); e.target.value = state.settings.stepReminderHour; saveState(); syncStreakToNative(); };
 
+  const calPair = [["#setting-cal-apple", "stepCalApple"], ["#setting-cal-actual", "stepCalActual"]];
+  calPair.forEach(([sel, key]) => {
+    const el = $(sel);
+    if (el) el.onchange = e => {
+      const v = Math.round(parseNum(e.target.value));
+      state.settings[key] = v > 0 ? v : null;
+      saveState(); renderStreakCard();
+    };
+  });
+
   const bwBtn = $("#btn-bw-log");
   if (bwBtn) bwBtn.onclick = () => {
     const v = $("#bw-input").value;
@@ -2851,6 +2901,7 @@ window.__applyNativeHealth = (metrics) => {
   state.health.lastFetch = now;
   state.health.lastError = null;
   saveState();
+  syncStreakToNative();
   if (document.querySelector("#view-health.active")) renderHealth();
 };
 
@@ -2910,6 +2961,7 @@ function adoptCloudState(remoteState, { toastMsg } = {}) {
     const active = document.querySelector(".view.active");
     showView(active ? active.id.replace("view-", "") : "today");
     if (toastMsg) toast(toastMsg);
+    syncStreakToNative();
   }
   return { changedVsRemote, changedVsLocal };
 }

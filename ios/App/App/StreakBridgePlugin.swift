@@ -30,6 +30,7 @@ public class StreakBridgePlugin: CAPPlugin, CAPBridgedPlugin {
             "last7": call.getArray("last7") ?? [],
             "reminderEnabled": call.getBool("reminderEnabled") ?? false,
             "reminderHour": call.getInt("reminderHour") ?? 19,
+            "calibration": call.getDouble("calibration") ?? 1.0,
             "updatedAt": Date().timeIntervalSince1970,
         ]
         if let data = try? JSONSerialization.data(withJSONObject: snapshot),
