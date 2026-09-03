@@ -65,21 +65,32 @@ public class StreakBridgePlugin: CAPPlugin, CAPBridgedPlugin {
         let existing = Self.readSnapshot(defaults)
         let day = Self.localDay()
         var steps = call.getInt("stepsToday") ?? 0
-        // Same-day steps are monotonic: a lower reading (partial HealthKit sync,
-        // pre-calibration value) never walks the widget backwards. A calibration
-        // change is the one legitimate reason the number can drop.
-        if let ex = existing,
+        let goal = call.getInt("goal") ?? 10000
+        // The app's value is AUTHORITATIVE: it comes from a full de-duplicated
+        // HealthKit statistics query with calibration applied, computed with the
+        // app in the foreground. It may legitimately correct DOWNWARD (e.g. when
+        // a stale double-counted value is stored). The only thing never allowed
+        // to overwrite a real count is a zero/missing read.
+        if steps <= 0,
+           let ex = existing,
            ex["date"] as? String == day,
-           let exSteps = ex["stepsToday"] as? Int,
-           abs((ex["calibration"] as? Double ?? 1.0) - (call.getDouble("calibration") ?? 1.0)) < 0.001 {
-            steps = max(steps, exSteps)
+           let exSteps = ex["stepsToday"] as? Int {
+            steps = exSteps
         }
+        // Derive hit + streak from the FINAL step count so the snapshot can never
+        // say "13,800 steps" and "goal not hit" at the same time. streakBase is
+        // the run of completed days before today; today adds at most one.
+        let streakBase = call.getInt("streakBase")
+            ?? max(0, (call.getInt("streak") ?? 0) - ((call.getBool("todayHit") ?? false) ? 1 : 0))
+        let hit = steps >= goal
+        let streak = streakBase + (hit ? 1 : 0)
         let snapshot: [String: Any] = [
             "date": day,
             "stepsToday": steps,
-            "goal": call.getInt("goal") ?? 10000,
-            "streak": call.getInt("streak") ?? 0,
-            "todayHit": call.getBool("todayHit") ?? false,
+            "goal": goal,
+            "streak": streak,
+            "streakBase": streakBase,
+            "todayHit": hit,
             "last7": call.getArray("last7") ?? [],
             "reminderEnabled": call.getBool("reminderEnabled") ?? false,
             "reminderHour": call.getInt("reminderHour") ?? 19,
@@ -94,10 +105,7 @@ public class StreakBridgePlugin: CAPPlugin, CAPBridgedPlugin {
         Self.rescheduleReminder(
             enabled: call.getBool("reminderEnabled") ?? false,
             hour: call.getInt("reminderHour") ?? 19,
-            todayHit: (call.getBool("todayHit") ?? false) || steps >= (call.getInt("goal") ?? 10000),
-            stepsToday: steps,
-            goal: call.getInt("goal") ?? 10000,
-            streak: call.getInt("streak") ?? 0
+            todayHit: hit, stepsToday: steps, goal: goal, streak: streak
         )
         call.resolve()
     }

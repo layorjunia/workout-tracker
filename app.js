@@ -429,11 +429,12 @@ function streakInfo() {
     else break;
   }
   const todayHit = days[0].hit;
+  const streakBase = streak;          // completed days before today
   if (todayHit) streak++;
   const last14 = days.slice(0, 14).reverse();
   const wk = workoutsThisWeek();
   const wkGoal = state.settings.workoutGoalPerWeek || 3;
-  return { goal, streak, todayHit, todaySteps: todaySteps ?? 0, last14, pct: Math.min(1, (todaySteps || 0) / goal),
+  return { goal, streak, streakBase, todayHit, todaySteps: todaySteps ?? 0, last14, pct: Math.min(1, (todaySteps || 0) / goal),
            workouts: wk, workoutGoal: wkGoal, weekHit: wk >= wkGoal };
 }
 
@@ -444,7 +445,7 @@ function syncStreakToNative() {
   const s = streakInfo();
   bridge.update({
     date: todayISO(),
-    stepsToday: Math.round(s.todaySteps), goal: s.goal, streak: s.streak, todayHit: s.todayHit,
+    stepsToday: Math.round(s.todaySteps), goal: s.goal, streak: s.streak, streakBase: s.streakBase, todayHit: s.todayHit,
     last7: s.last14.slice(-7).map(d => ({ date: d.date, hit: d.hit, known: d.known })),
     reminderEnabled: !!state.settings.stepReminder,
     reminderHour: state.settings.stepReminderHour || 19,
@@ -2313,9 +2314,13 @@ function renderStreakCard() {
   const toNext = streakInfo().streak > 0 ? 7 - (streakInfo().streak % 7) : null;
   const nextTier = streakTier((Math.floor(streakInfo().streak / 7) + 1) * 7);
   const nextLine = toNext && toNext < 7 ? `<div class="muted small">${toNext} day${toNext > 1 ? "s" : ""} to ${nextTier.emoji} ${nextTier.label}</div>` : "";
-  const rawToday = stepsFor(todayISO()) ?? state.health?.data?.stepsToday;
-  const calNote = stepCalibration() !== 1 && rawToday != null
-    ? `<p class="muted small" style="margin:10px 0 0">Apple counted ${fmt(rawToday)} → calibrated ${fmt(calSteps(rawToday))}.</p>` : "";
+  const dayRec = state.health?.daily?.[todayISO()] || {};
+  const rawToday = dayRec.stepsToday ?? state.health?.data?.stepsToday;
+  const rawSamples = dayRec.stepsRawToday ?? state.health?.data?.stepsRawToday;
+  const calNote = rawToday == null ? "" : `<p class="muted small" style="margin:10px 0 0">
+      Apple Health (de-duplicated) <strong>${fmt(rawToday)}</strong>${stepCalibration() !== 1 ? ` → calibrated <strong>${fmt(calSteps(rawToday))}</strong>` : ""}.
+      ${rawSamples != null && Math.abs(rawSamples - rawToday) > 200 ? `Raw sample sum is ${fmt(rawSamples)} (iPhone + Watch overlap) — the de-duplicated figure is the one the Health app shows.` : ""}
+    </p>`;
   const gI = $("#setting-step-goal"); if (gI && !gI.value) gI.value = state.settings.stepGoal;
   const wG = $("#setting-workout-goal"); if (wG && !wG.value) wG.value = state.settings.workoutGoalPerWeek;
   const rT = $("#setting-step-reminder"); if (rT) rT.checked = !!state.settings.stepReminder;
@@ -3099,7 +3104,13 @@ function init() {
     saveStateLocalOnly();
     if (window.WorkoutSync?.hasPendingPush?.()) window.WorkoutSync.forcePush();
   };
-  document.addEventListener("visibilitychange", () => { if (document.hidden) flushOnHide(); });
+  // Any return to the app refreshes the widget snapshot, whatever tab is showing —
+// the widget must never be able to disagree with what the app knows.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) setTimeout(syncStreakToNative, 300);
+}, { capture: true });
+
+document.addEventListener("visibilitychange", () => { if (document.hidden) flushOnHide(); });
   window.addEventListener("pagehide", flushOnHide);
   window.addEventListener("beforeunload", flushOnHide);
 

@@ -40,6 +40,27 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             "workoutsThisWeek": 0, "workoutGoal": 3, "weekHit": false]
 
         let goal = snap["goal"] as? Int ?? 10000
+
+        // Consistency repair FIRST, independent of HealthKit. Whatever the stored
+        // step count is, hit/streak must agree with it — a snapshot can never say
+        // "13,800 steps" and "goal not hit". This runs even if the HealthKit query
+        // below is slow, unauthorized, or never calls back.
+        let day = StreakBridgePlugin.localDay()
+        if snap["date"] as? String == day {
+            let storedSteps = snap["stepsToday"] as? Int ?? 0
+            let base = snap["streakBase"] as? Int
+                ?? max(0, (snap["streak"] as? Int ?? 0) - ((snap["todayHit"] as? Bool ?? false) ? 1 : 0))
+            let repairedHit = storedSteps >= goal
+            if (snap["todayHit"] as? Bool) != repairedHit || snap["streakBase"] == nil {
+                snap["todayHit"] = repairedHit
+                snap["streakBase"] = base
+                snap["streak"] = base + (repairedHit ? 1 : 0)
+                snap["updatedAt"] = Date().timeIntervalSince1970
+                StreakBridgePlugin.writeSnapshot(snap, to: defaults)
+                StreakBridgePlugin.maybeReloadWidgets(old: existing, new: snap, defaults: defaults)
+            }
+        }
+
         let store = HKHealthStore()
         guard HKHealthStore.isHealthDataAvailable(),
               let stepType = HKObjectType.quantityType(forIdentifier: .stepCount)
@@ -49,7 +70,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         let predicate = HKQuery.predicateForSamples(withStart: start, end: Date())
         let calibration = snap["calibration"] as? Double ?? 1.0
         let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, stats, _ in
-            let day = StreakBridgePlugin.localDay()
             var steps = Int((stats?.sumQuantity()?.doubleValue(for: .count()) ?? 0) * calibration)
             // HealthKit can return 0/partial while the phone is locked or mid-sync.
             // Same-day values are monotonic: never write a lower number than the
@@ -57,10 +77,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             if snap["date"] as? String == day, let exSteps = snap["stepsToday"] as? Int {
                 steps = max(steps, exSteps)
             }
+            // Same derivation as the plugin: hit and streak always follow the
+            // final step count, so the two writers can never disagree.
             let hit = steps >= goal
+            let streakBase = snap["streakBase"] as? Int
+                ?? max(0, (snap["streak"] as? Int ?? 0) - ((snap["todayHit"] as? Bool ?? false) ? 1 : 0))
             snap["date"] = day
             snap["stepsToday"] = steps
             snap["todayHit"] = hit
+            snap["streakBase"] = streakBase
+            snap["streak"] = streakBase + (hit ? 1 : 0)
             snap["updatedAt"] = Date().timeIntervalSince1970
             StreakBridgePlugin.writeSnapshot(snap, to: defaults)
             StreakBridgePlugin.maybeReloadWidgets(old: existing, new: snap, defaults: defaults)
@@ -70,7 +96,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 todayHit: hit,
                 stepsToday: steps,
                 goal: goal,
-                streak: snap["streak"] as? Int ?? 0
+                streak: streakBase + (hit ? 1 : 0)
             )
             task?.setTaskCompleted(success: true)
         }

@@ -120,8 +120,16 @@
 
   const DAY = 24 * 3600 * 1000;
 
+  // Raw sample sum — kept only as a diagnostic next to the de-duplicated total,
+  // so a mismatch between the two is visible instead of mysterious.
+  async function sumTodayRawSamples(dataType) {
+    const raw = await read(dataType, startOfToday(), 10000);
+    if (!raw.length) return null;
+    return raw.reduce((acc, s) => acc + (Number(s.value) || 0), 0);
+  }
+
   async function collectMetrics() {
-    const [restingHR, hrv, spo2, steps, kcal, kg, fat, sleep] = await Promise.all([
+    const [restingHR, hrv, spo2, steps, kcal, kg, fat, sleep, stepsRaw] = await Promise.all([
       latest("restingHeartRate", 2 * DAY),
       latest("heartRateVariability", 2 * DAY),
       latest("oxygenSaturation", 2 * DAY),
@@ -130,6 +138,7 @@
       latest("weight", 60 * DAY),
       latest("bodyFat", 60 * DAY),
       analyzeSleep(),
+      sumTodayRawSamples("steps").catch(() => null),
     ]);
     const r1 = (n) => Math.round(n * 10) / 10;
     const out = {};
@@ -137,6 +146,7 @@
     if (hrv       != null) out.hrv               = Math.round(hrv);
     if (spo2      != null) out.bloodOxygen       = Math.round(spo2 * 100);      // HK percent = 0..1
     if (steps     != null) out.stepsToday        = Math.round(steps);
+    if (stepsRaw  != null) out.stepsRawToday     = Math.round(stepsRaw);
     if (kcal      != null) out.activeEnergyToday = Math.round(kcal);
     if (kg        != null) out.weightLbs         = r1(kg * 2.2046226218);       // kg → lb
     if (fat       != null) out.bodyFatPct        = r1(fat * 100);               // fraction → %
