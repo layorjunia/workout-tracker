@@ -52,9 +52,15 @@ public class StreakBridgePlugin: CAPPlugin, CAPBridgedPlugin {
             return "\(steps)|\(s["todayHit"] as? Bool ?? false)|\(s["streak"] as? Int ?? 0)|\(s["workoutsThisWeek"] as? Int ?? 0)|\(s["weekHit"] as? Bool ?? false)|\(s["goal"] as? Int ?? 0)|\(s["date"] as? String ?? "")"
         }
         let changed = old == nil || bucket(old!) != bucket(new)
+        // A new day or a goal just being reached is never throttled — those are
+        // exactly the moments the widget must not lag behind.
+        let urgent = old == nil
+            || (old?["date"] as? String) != (new["date"] as? String)
+            || (old?["todayHit"] as? Bool ?? false) != (new["todayHit"] as? Bool ?? false)
+            || (old?["weekHit"] as? Bool ?? false) != (new["weekHit"] as? Bool ?? false)
         let last = defaults?.double(forKey: "lastWidgetReload") ?? 0
         let now = Date().timeIntervalSince1970
-        if changed && now - last > 240 {
+        if changed && (urgent || now - last > 240) {
             defaults?.set(now, forKey: "lastWidgetReload")
             WidgetCenter.shared.reloadAllTimelines()
         }

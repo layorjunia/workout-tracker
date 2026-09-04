@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		04A2D4E3B17FDF0E2675DEEB /* StreakWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70E7CE0DA5D54A00FA704BBC /* StreakWidget.swift */; };
+		26B96B5F79E81F006FA8C662 /* StreakRollover.swift in Sources */ = {isa = PBXBuildFile; fileRef = E83C931DD457B77FE86315D2 /* StreakRollover.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
@@ -19,6 +20,7 @@
 		6BFFAFF6C062BC8E370D68CA /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A36E00D7A1E9903007B4B11E /* Foundation.framework */; };
 		7ADF76C1A5DF993E4B64A937 /* StreakWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 97BC49DADA16B4D179ABF396 /* StreakWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		86F50F5FB3C5F7215B1A60A9 /* StreakBridgePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = C494C65B39D702FF8E1108D3 /* StreakBridgePlugin.swift */; };
+		A066BC21F6C2618EA2EE2DE2 /* StreakRollover.swift in Sources */ = {isa = PBXBuildFile; fileRef = E83C931DD457B77FE86315D2 /* StreakRollover.swift */; };
 		A1B2C3D4E5F60001000000B1 /* NutritionPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000000A1 /* NutritionPlugin.swift */; };
 		A1B2C3D4E5F60002000000B2 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60002000000A2 /* MainViewController.swift */; };
 /* End PBXBuildFile section */
@@ -66,6 +68,7 @@
 		A1B2C3D4E5F60002000000A2 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 		A36E00D7A1E9903007B4B11E /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		C494C65B39D702FF8E1108D3 /* StreakBridgePlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StreakBridgePlugin.swift; sourceTree = "<group>"; };
+		E83C931DD457B77FE86315D2 /* StreakRollover.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StreakRollover.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -96,6 +99,7 @@
 				504EC3051FED79650016851F /* Products */,
 				9CF911EE80E580E6DFBD7ACE /* Frameworks */,
 				7E3FB86462F5EB48CE7E2BA6 /* StreakWidget */,
+				F380113A98E067C619AE59AC /* Shared */,
 			);
 			sourceTree = "<group>";
 		};
@@ -152,6 +156,15 @@
 			);
 			name = iOS;
 			sourceTree = "<group>";
+		};
+		F380113A98E067C619AE59AC /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				E83C931DD457B77FE86315D2 /* StreakRollover.swift */,
+			);
+			name = Shared;
+			path = Shared;
+			sourceTree = SOURCE_ROOT;
 		};
 /* End PBXGroup section */
 
@@ -262,6 +275,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				04A2D4E3B17FDF0E2675DEEB /* StreakWidget.swift in Sources */,
+				A066BC21F6C2618EA2EE2DE2 /* StreakRollover.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -273,6 +287,7 @@
 				A1B2C3D4E5F60002000000B2 /* MainViewController.swift in Sources */,
 				A1B2C3D4E5F60001000000B1 /* NutritionPlugin.swift in Sources */,
 				86F50F5FB3C5F7215B1A60A9 /* StreakBridgePlugin.swift in Sources */,
+				26B96B5F79E81F006FA8C662 /* StreakRollover.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

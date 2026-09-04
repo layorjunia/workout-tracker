@@ -415,7 +415,7 @@ function streakTier(streak) {
 function streakInfo() {
   const goal = state.settings.stepGoal || 10000;
   const today = todayISO();
-  const todaySteps = calSteps(stepsFor(today) ?? (state.health?.data?.stepsToday ?? null));
+  const todaySteps = calSteps(stepsFor(today) ?? (healthDataIsFromToday() ? (state.health?.data?.stepsToday ?? null) : null));
   const days = [];
   for (let i = 0; i < 60; i++) {
     const d = new Date(today + "T00:00:00"); d.setDate(d.getDate() - i);
@@ -2315,8 +2315,8 @@ function renderStreakCard() {
   const nextTier = streakTier((Math.floor(streakInfo().streak / 7) + 1) * 7);
   const nextLine = toNext && toNext < 7 ? `<div class="muted small">${toNext} day${toNext > 1 ? "s" : ""} to ${nextTier.emoji} ${nextTier.label}</div>` : "";
   const dayRec = state.health?.daily?.[todayISO()] || {};
-  const rawToday = dayRec.stepsToday ?? state.health?.data?.stepsToday;
-  const rawSamples = dayRec.stepsRawToday ?? state.health?.data?.stepsRawToday;
+  const rawToday = dayRec.stepsToday ?? (healthDataIsFromToday() ? state.health?.data?.stepsToday : undefined);
+  const rawSamples = dayRec.stepsRawToday ?? (healthDataIsFromToday() ? state.health?.data?.stepsRawToday : undefined);
   const calNote = rawToday == null ? "" : `<p class="muted small" style="margin:10px 0 0">
       Apple Health (de-duplicated) <strong>${fmt(rawToday)}</strong>${stepCalibration() !== 1 ? ` → calibrated <strong>${fmt(calSteps(rawToday))}</strong>` : ""}.
       ${rawSamples != null && Math.abs(rawSamples - rawToday) > 200 ? `Raw sample sum is ${fmt(rawSamples)} (iPhone + Watch overlap) — the de-duplicated figure is the one the Health app shows.` : ""}
@@ -2443,10 +2443,21 @@ function updateBalance(date, n) {
 
 // Health metrics for a given date: daily history first; for today, fall back to
 // the latest snapshot (which the native sync / Shortcut keeps current).
+// The "latest" snapshot is whatever the last sync produced — which, before the
+// first sync of a new day, is YESTERDAY's numbers. Only treat it as today's when
+// it was actually recorded today, or the app reports yesterday's steps as today's.
+function healthDataIsFromToday() {
+  const u = state.health?.data?.updatedAt;
+  if (!u) return false;
+  const d = new Date(u);
+  return Number.isFinite(d.getTime()) && isoDateLocal(d) === todayISO();
+}
 function healthFor(date) {
   const daily = state.health?.daily?.[date];
   if (daily && Object.keys(daily).length) return { ...daily, _source: "daily" };
-  if (date === todayISO() && state.health?.data) return { ...state.health.data, _source: "latest" };
+  if (date === todayISO() && state.health?.data && healthDataIsFromToday()) {
+    return { ...state.health.data, _source: "latest" };
+  }
   return null;
 }
 
@@ -2929,6 +2940,29 @@ async function runFullBackfill(btn) {
     if (btn) { btn.disabled = false; btn.textContent = "Backfill Apple Health history"; }
   }
 }
+
+// Daily step totals for recent days. Past days only ever move UP (a day logged
+// at noon shouldn't stay stuck at its midday count and break the streak); today
+// is owned by the live sync, so it's left alone here.
+window.__applyStepHistory = (map) => {
+  if (!map || typeof map !== "object") return;
+  state.health = state.health || { lastFetch: null, data: null, lastError: null, daily: {} };
+  state.health.daily = state.health.daily || {};
+  const today = todayISO();
+  let changed = false;
+  for (const [date, steps] of Object.entries(map)) {
+    const v = Math.round(Number(steps) || 0);
+    if (v <= 0 || date === today) continue;
+    const rec = (state.health.daily[date] ||= {});
+    const cur = Number.isFinite(+rec.stepsToday) ? +rec.stepsToday : 0;
+    if (v > cur) { rec.stepsToday = v; rec.updatedAt = Date.now(); changed = true; }
+  }
+  if (changed) {
+    saveState();
+    if (document.getElementById("streak-card")) renderStreakCard();
+    syncStreakToNative();
+  }
+};
 
 window.__applyNativeHealth = (metrics) => {
   if (!metrics || typeof metrics !== "object") return;

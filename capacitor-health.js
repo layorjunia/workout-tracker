@@ -328,6 +328,33 @@
     return Object.keys(map).length;
   }
 
+  // Days the app wasn't opened are missing from local history, which made the
+  // streak look broken even though HealthKit had the steps all along. Pull the
+  // last week of daily totals on every sync so the streak is computed from the
+  // full picture.
+  async function backfillRecentSteps(days = 8) {
+    const h = health();
+    if (!h) return 0;
+    const end = new Date();
+    const start = new Date(); start.setDate(start.getDate() - days); start.setHours(0, 0, 0, 0);
+    try {
+      const { samples } = await h.queryAggregated({
+        dataType: "steps", startDate: start.toISOString(), endDate: end.toISOString(),
+        bucket: "day", aggregation: "sum",
+      });
+      const map = {};
+      for (const s of samples || []) {
+        const v = Number(s.value) || 0;
+        if (v > 0) map[localDate(s.startDate)] = Math.round(v);
+      }
+      if (Object.keys(map).length) window.__applyStepHistory?.(map);
+      return Object.keys(map).length;
+    } catch (e) {
+      console.warn("[health] step history:", e?.message || e);
+      return 0;
+    }
+  }
+
   async function syncNow() {
     if (syncing) return;
     syncing = true;
@@ -340,6 +367,7 @@
         window.__applyNativeHealth?.(metrics);
         console.log("[health] applied", Object.keys(metrics).join(", "));
       }
+      await backfillRecentSteps(8).catch(() => {});
       // Nutrition rides along once the user has connected it (no prompt otherwise)
       if (localStorage.getItem(NUT_AUTH_KEY) === "1") {
         await syncNutrition(7).catch(e => console.warn("[nutrition] sync failed:", e?.message || e));
@@ -358,7 +386,7 @@
     if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
   }
 
-  window.WorkoutNativeHealth = { isNative: true, syncNow, start, stop, enrichWorkout, syncNutrition, backfillHistory, authorized: () => localStorage.getItem(AUTH_KEY) === "1" };
+  window.WorkoutNativeHealth = { isNative: true, syncNow, start, stop, enrichWorkout, syncNutrition, backfillHistory, backfillRecentSteps, authorized: () => localStorage.getItem(AUTH_KEY) === "1" };
 
   // Re-sync when the app returns to the foreground (after permission granted once).
   document.addEventListener("visibilitychange", () => {

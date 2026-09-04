@@ -40,25 +40,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             "workoutsThisWeek": 0, "workoutGoal": 3, "weekHit": false]
 
         let goal = snap["goal"] as? Int ?? 10000
-
-        // Consistency repair FIRST, independent of HealthKit. Whatever the stored
-        // step count is, hit/streak must agree with it — a snapshot can never say
-        // "13,800 steps" and "goal not hit". This runs even if the HealthKit query
-        // below is slow, unauthorized, or never calls back.
         let day = StreakBridgePlugin.localDay()
-        if snap["date"] as? String == day {
-            let storedSteps = snap["stepsToday"] as? Int ?? 0
-            let base = snap["streakBase"] as? Int
-                ?? max(0, (snap["streak"] as? Int ?? 0) - ((snap["todayHit"] as? Bool ?? false) ? 1 : 0))
-            let repairedHit = storedSteps >= goal
-            if (snap["todayHit"] as? Bool) != repairedHit || snap["streakBase"] == nil {
-                snap["todayHit"] = repairedHit
-                snap["streakBase"] = base
-                snap["streak"] = base + (repairedHit ? 1 : 0)
-                snap["updatedAt"] = Date().timeIntervalSince1970
-                StreakBridgePlugin.writeSnapshot(snap, to: defaults)
-                StreakBridgePlugin.maybeReloadWidgets(old: existing, new: snap, defaults: defaults)
-            }
+
+        // Bring the snapshot onto today BEFORE anything reads it, then force
+        // hit/streak to agree with the stored step count. Both rules live in
+        // StreakRollover (covered by ios/tests/RolloverTests.swift) so the app
+        // and the widget can't drift apart. Neither step needs HealthKit, so a
+        // slow or unauthorized query can't leave yesterday on screen.
+        var changed = StreakRollover.rollSnapshot(&snap, to: day)
+        if StreakRollover.repairConsistency(&snap, today: day) { changed = true }
+        if changed {
+            snap["updatedAt"] = Date().timeIntervalSince1970
+            StreakBridgePlugin.writeSnapshot(snap, to: defaults)
+            StreakBridgePlugin.maybeReloadWidgets(old: existing, new: snap, defaults: defaults)
         }
 
         let store = HKHealthStore()
@@ -77,16 +71,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             if snap["date"] as? String == day, let exSteps = snap["stepsToday"] as? Int {
                 steps = max(steps, exSteps)
             }
-            // Same derivation as the plugin: hit and streak always follow the
-            // final step count, so the two writers can never disagree.
-            let hit = steps >= goal
-            let streakBase = snap["streakBase"] as? Int
-                ?? max(0, (snap["streak"] as? Int ?? 0) - ((snap["todayHit"] as? Bool ?? false) ? 1 : 0))
+            // hit/streak always follow the final step count — same shared rule
+            // the plugin and widget use, so the writers can never disagree.
             snap["date"] = day
             snap["stepsToday"] = steps
-            snap["todayHit"] = hit
-            snap["streakBase"] = streakBase
-            snap["streak"] = streakBase + (hit ? 1 : 0)
+            StreakRollover.repairConsistency(&snap, today: day)
+            let hit = snap["todayHit"] as? Bool ?? false
             snap["updatedAt"] = Date().timeIntervalSince1970
             StreakBridgePlugin.writeSnapshot(snap, to: defaults)
             StreakBridgePlugin.maybeReloadWidgets(old: existing, new: snap, defaults: defaults)
@@ -96,7 +86,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 todayHit: hit,
                 stepsToday: steps,
                 goal: goal,
-                streak: streakBase + (hit ? 1 : 0)
+                streak: snap["streak"] as? Int ?? 0
             )
             task?.setTaskCompleted(success: true)
         }

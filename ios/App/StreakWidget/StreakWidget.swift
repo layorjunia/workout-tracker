@@ -12,10 +12,14 @@ struct StreakSnapshot: Decodable {
     var workoutsThisWeek: Int = 0
     var workoutGoal: Int = 3
     var weekHit: Bool = false
+    var date: String = ""
+    var streakBase: Int = 0
+    var stale: Bool = false
     struct Day: Decodable {
         var date: String = ""
         var hit: Bool = false
         var known: Bool = false
+        init() {}
         enum K: String, CodingKey { case date, hit, known }
         init(from dec: Decoder) throws {
             let c = try dec.container(keyedBy: K.self)
@@ -29,7 +33,7 @@ struct StreakSnapshot: Decodable {
         self.stepsToday = stepsToday; self.goal = goal; self.streak = streak
         self.todayHit = todayHit; self.last7 = last7
     }
-    enum K: String, CodingKey { case stepsToday, goal, streak, todayHit, last7, workoutsThisWeek, workoutGoal, weekHit }
+    enum K: String, CodingKey { case stepsToday, goal, streak, todayHit, last7, workoutsThisWeek, workoutGoal, weekHit, date, streakBase }
     init(from dec: Decoder) throws {
         let c = try dec.container(keyedBy: K.self)
         stepsToday = (try? c.decodeIfPresent(Int.self, forKey: .stepsToday)) ?? 0
@@ -40,6 +44,42 @@ struct StreakSnapshot: Decodable {
         workoutsThisWeek = (try? c.decodeIfPresent(Int.self, forKey: .workoutsThisWeek)) ?? 0
         workoutGoal = (try? c.decodeIfPresent(Int.self, forKey: .workoutGoal)) ?? 3
         weekHit = (try? c.decodeIfPresent(Bool.self, forKey: .weekHit)) ?? false
+        date = (try? c.decodeIfPresent(String.self, forKey: .date)) ?? ""
+        streakBase = (try? c.decodeIfPresent(Int.self, forKey: .streakBase)) ?? max(0, streak - (todayHit ? 1 : 0))
+    }
+
+    /// Project onto the given moment. A snapshot written yesterday describes
+    /// yesterday — rendering it unprojected is what showed a stale step count
+    /// and a stale streak after midnight.
+    func projected(to when: Date) -> StreakSnapshot {
+        guard !date.isEmpty else { return self }
+        let today = StreakRollover.localDay(when)
+        if date == today { return self }
+        let rolled = StreakRollover.project(
+            StreakCore(date: date, stepsToday: stepsToday, goal: goal, streak: streak,
+                       streakBase: streakBase, todayHit: todayHit,
+                       workoutsThisWeek: workoutsThisWeek, weekHit: weekHit,
+                       workoutGoal: workoutGoal),
+            to: today)
+        var out = self
+        out.date = rolled.date
+        out.stepsToday = rolled.stepsToday
+        out.todayHit = rolled.todayHit
+        out.streak = rolled.streak
+        out.streakBase = rolled.streakBase
+        out.workoutsThisWeek = rolled.workoutsThisWeek
+        out.weekHit = rolled.weekHit
+        out.stale = rolled.stale
+        // Slide the 7-day strip so yesterday takes its finished place.
+        if StreakRollover.dayGap(from: date, to: today) == 1, !last7.isEmpty {
+            var days = last7
+            var finished = Day()
+            finished.date = date; finished.hit = todayHit; finished.known = true
+            days.removeFirst()
+            days.append(finished)
+            out.last7 = days
+        }
+        return out
     }
 }
 
@@ -70,12 +110,23 @@ struct StreakEntry: TimelineEntry {
 struct StreakProvider: TimelineProvider {
     func placeholder(in context: Context) -> StreakEntry { StreakEntry(date: .now, snap: StreakSnapshot(stepsToday: 6500, goal: 10000, streak: 4, todayHit: false, last7: [])) }
     func getSnapshot(in context: Context, completion: @escaping (StreakEntry) -> Void) {
-        completion(StreakEntry(date: .now, snap: loadSnapshot()))
+        completion(StreakEntry(date: .now, snap: loadSnapshot().projected(to: .now)))
     }
     func getTimeline(in context: Context, completion: @escaping (Timeline<StreakEntry>) -> Void) {
-        let entry = StreakEntry(date: .now, snap: loadSnapshot())
-        let next = Calendar.current.date(byAdding: .minute, value: 30, to: .now)!
-        completion(Timeline(entries: [entry], policy: .after(next)))
+        let raw = loadSnapshot()
+        let now = Date()
+        var entries = [StreakEntry(date: now, snap: raw.projected(to: now))]
+        // Pre-render the day rollover. Timeline entries are honored even when the
+        // widget-reload budget is exhausted, so midnight always lands on time
+        // instead of waiting for the next app open.
+        if let midnight = Calendar.current.nextDate(after: now, matching: DateComponents(hour: 0, minute: 0),
+                                                    matchingPolicy: .nextTime) {
+            entries.append(StreakEntry(date: midnight, snap: raw.projected(to: midnight)))
+            let after = midnight.addingTimeInterval(300)
+            completion(Timeline(entries: entries, policy: .after(after)))
+            return
+        }
+        completion(Timeline(entries: entries, policy: .after(now.addingTimeInterval(1800))))
     }
 }
 
