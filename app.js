@@ -59,6 +59,16 @@ const SEED = {
     {name:"Burpees",               type:"bodyweight", defaultSets:3, defaultRepRange:"10–15", days:[]},
     {name:"Bodyweight Squats",     type:"bodyweight", defaultSets:3, defaultRepRange:"15–25", days:[]},
     {name:"Lunges",                type:"bodyweight", defaultSets:3, defaultRepRange:"10–15", days:[]},
+    // Riding-specific (added v3)
+    {name:"Bird Dog",              type:"bodyweight", defaultSets:3, defaultRepRange:"12/side", days:[]},
+    {name:"Superman",              type:"bodyweight", defaultSets:3, defaultRepRange:"15", days:[]},
+    {name:"Russian Twists",        type:"bodyweight", defaultSets:3, defaultRepRange:"20 (10/side)", days:[]},
+    {name:"Two-Point Hold",        type:"timed", defaultSets:4, defaultRepRange:"max · freestanding", days:[]},
+    {name:"Single-Leg Balance Hold", type:"timed", defaultSets:3, defaultRepRange:"30–45s/leg", days:[]},
+    {name:"Bulgarian Split Squat", defaultSets:3, defaultRepRange:"10/leg", days:[]},
+    {name:"Sumo Squat",            defaultSets:3, defaultRepRange:"15", days:[]},
+    {name:"Single-Leg Romanian Deadlift", defaultSets:3, defaultRepRange:"10/leg", days:[]},
+    {name:"Horseback Riding",      type:"cardio", defaultSets:1, defaultRepRange:"", days:[]},
   ],
 };
 
@@ -150,6 +160,41 @@ const DEFAULT_TEMPLATES = [
       "Squats Leg Press",
       "Preacher Curl",
       "Ab Twist Machine",
+    ],
+  },
+  {
+    id: "tpl-rider-core",
+    name: "Rider Core",
+    subtitle: "Position · stability · 2x/week",
+    exercises: [
+      "Plank",
+      "Side Plank",
+      "Bird Dog",
+      "Superman",
+      "Russian Twists",
+      "Two-Point Hold",
+      "Wall Sit",
+    ],
+  },
+  {
+    id: "tpl-rider-legs",
+    name: "Rider Legs",
+    subtitle: "Legs · balance · 1–2x/week",
+    exercises: [
+      "Squats",
+      "Bulgarian Split Squat",
+      "Sumo Squat",
+      "Single-Leg Romanian Deadlift",
+      "Single-Leg Balance Hold",
+    ],
+  },
+  {
+    id: "tpl-finisher",
+    name: "Daily Finisher",
+    subtitle: "5 min · no equipment",
+    exercises: [
+      "Two-Point Hold",
+      "Wall Sit",
     ],
   },
   {
@@ -814,7 +859,7 @@ function migrate(s) {
   s.settings.stepReminderHour ??= 19;   // 7 pm local
   s.settings.stepCalApple ??= null;     // "Apple Health says X…"
   s.settings.stepCalActual ??= null;    // "…but I actually walked Y" → factor Y/X
-  s.settings.workoutGoalPerWeek ??= 3;
+  s.settings.workoutGoalPerWeek ??= 4;
   s.profile = Object.assign(defaultProfile(), s.profile || {});
   s.profile.goals = Object.assign({ calories: null, protein: null }, s.profile.goals || {});
   s.nutrition ??= [];
@@ -920,6 +965,19 @@ function migrate(s) {
       }
       s.templatesTopFourApplied = true;
     }
+  }
+
+  // Riding program (Sep 2026): two riding templates + the daily finisher, and a
+  // weekly workout goal of 4. Added by id so a later rename/edit is never undone.
+  if (!s.templatesRiderAdded) {
+    for (const t of DEFAULT_TEMPLATES) {
+      if (!["tpl-rider-core", "tpl-rider-legs", "tpl-finisher"].includes(t.id)) continue;
+      if (!s.templates.some(x => x.id === t.id || exNameKey(x.name) === exNameKey(t.name))) {
+        s.templates.push(JSON.parse(JSON.stringify(t)));
+      }
+    }
+    s.settings.workoutGoalPerWeek = 4;
+    s.templatesRiderAdded = true;
   }
 
   // Jacob's dictated template edits (Aug 26): Pull swaps the pushdown for Cable
