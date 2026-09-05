@@ -186,13 +186,6 @@ const DEFAULT_TEMPLATES = [
       "Sumo Squat",
       "Single-Leg Romanian Deadlift",
       "Single-Leg Balance Hold",
-    ],
-  },
-  {
-    id: "tpl-finisher",
-    name: "Daily Finisher",
-    subtitle: "5 min · no equipment",
-    exercises: [
       "Two-Point Hold",
       "Wall Sit",
     ],
@@ -200,10 +193,9 @@ const DEFAULT_TEMPLATES = [
   {
     id: "tpl-cardio",
     name: "Cardio",
-    subtitle: "HR · sweat · zone 2",
+    subtitle: "Walk",
     exercises: [
       "Incline Walk",
-      "Stationary Bike",
     ],
   },
 ];
@@ -971,13 +963,28 @@ function migrate(s) {
   // weekly workout goal of 4. Added by id so a later rename/edit is never undone.
   if (!s.templatesRiderAdded) {
     for (const t of DEFAULT_TEMPLATES) {
-      if (!["tpl-rider-core", "tpl-rider-legs", "tpl-finisher"].includes(t.id)) continue;
+      if (!["tpl-rider-core", "tpl-rider-legs"].includes(t.id)) continue;
       if (!s.templates.some(x => x.id === t.id || exNameKey(x.name) === exNameKey(t.name))) {
         s.templates.push(JSON.parse(JSON.stringify(t)));
       }
     }
     s.settings.workoutGoalPerWeek = 4;
     s.templatesRiderAdded = true;
+  }
+
+  // Sep 5: the finisher is part of the two riding days, not its own template,
+  // and Cardio is just the walk.
+  if (!s.templatesRiderV2) {
+    s.templates = s.templates.filter(t => t.id !== "tpl-finisher");
+    const legs = s.templates.find(t => t.id === "tpl-rider-legs");
+    if (legs) {
+      for (const n of ["Two-Point Hold", "Wall Sit"]) {
+        if (!legs.exercises.some(x => exGroupKey(x) === exGroupKey(n))) legs.exercises.push(n);
+      }
+    }
+    const cardio = s.templates.find(t => t.id === "tpl-cardio");
+    if (cardio) { cardio.exercises = ["Incline Walk"]; cardio.subtitle = "Walk"; }
+    s.templatesRiderV2 = true;
   }
 
   // Jacob's dictated template edits (Aug 26): Pull swaps the pushdown for Cable
