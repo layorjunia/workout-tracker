@@ -431,13 +431,29 @@ function calSteps(raw) {
 }
 // Weekly workout goal: completed sessions (with logged data) in the current
 // Monday-start week.
+// A session only counts toward the weekly goal if it was real work: at least
+// 4 logged sets, or any cardio (a ride or a walk counts however few "sets" it
+// records). Everything still shows in History and Progress — this gate is only
+// about the weekly workout target.
+const WEEKLY_MIN_SETS = 4;
+function countsTowardWeeklyGoal(w) {
+  if (!w) return false;
+  let sets = 0;
+  for (const e of w.entries || []) {
+    const logged = (e.sets || []).filter(setHasData);
+    if (!logged.length) continue;
+    if (exerciseType(state.exercises.find(x => x.id === e.exerciseId)) === "cardio") return true;
+    sets += logged.length;
+  }
+  return sets >= WEEKLY_MIN_SETS;
+}
 function workoutsThisWeek() {
   const now = new Date(todayISO() + "T00:00:00");
   const mon = new Date(now); mon.setDate(now.getDate() - ((now.getDay() + 6) % 7));
   const start = isoDateLocal(mon);
   return state.workouts.filter(w =>
     w.id !== activeWorkoutId && w.date >= start && w.date <= todayISO() &&
-    w.entries?.some(e => e.sets?.some(setHasData))).length;
+    countsTowardWeeklyGoal(w)).length;
 }
 
 // Streak milestone ladder — mirrored in StreakWidget.swift
@@ -2417,6 +2433,7 @@ function renderStreakCard() {
       <div class="wk-bar"><i style="width:${Math.min(100, (s.workouts / s.workoutGoal) * 100).toFixed(0)}%"></i></div>
       <strong>${s.workouts}/${s.workoutGoal}${s.weekHit ? " ✓" : ""}</strong>
     </div>
+    <p class="muted small" style="margin:6px 0 0">Counts a session with 4+ sets, or any cardio.</p>
     ${calNote}
     <p class="muted small native-only" id="widget-status" style="margin:8px 0 0"></p>`;
   const bridge = window.Capacitor?.Plugins?.StreakBridge;
