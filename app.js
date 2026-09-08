@@ -2157,8 +2157,8 @@ function renderInsights() {
   if (!list) return;
   const ins = Analytics.insights();
   intro.textContent = ins.sessions < 6
-    ? `Insights unlock after ~6 sessions with comparable lifts. You have ${ins.sessions}.`
-    : `${ins.sessions} sessions · ${ins.withHealth} with Watch/sleep data · ${ins.withNutrition} with nutrition. "Quality" = share of lifts that beat your previous session.`;
+    ? `${ins.sessions} of 6 sessions`
+    : `${ins.sessions} sessions · ${ins.withHealth} with Watch data · ${ins.withNutrition} with nutrition`;
   const ready = ins.results.filter(r => r.ready);
   const waiting = ins.results.filter(r => !r.ready);
   const bar = (v) => `<div class="ins-bar"><div style="width:${v == null ? 0 : Math.round(v * 100)}%"></div></div>`;
@@ -2445,18 +2445,7 @@ function renderStreakCard() {
   const dayRec = state.health?.daily?.[todayISO()] || {};
   const rawToday = dayRec.stepsToday ?? (healthDataIsFromToday() ? state.health?.data?.stepsToday : undefined);
   const rawSamples = dayRec.stepsRawToday ?? (healthDataIsFromToday() ? state.health?.data?.stepsRawToday : undefined);
-  const dedup = dayRec.stepsToday ?? (healthDataIsFromToday() ? state.health?.data?.stepsToday : undefined);
-  const combined = dayRec.stepsRawToday ?? (healthDataIsFromToday() ? state.health?.data?.stepsRawToday : undefined);
-  const srcSel = `<label style="margin-top:10px">
-      <span class="label">Step source</span>
-      <select id="setting-step-source">
-        <option value="health">Apple Health total (de-duplicated)</option>
-        <option value="combined">iPhone + Watch samples added</option>
-      </select>
-    </label>`;
-  const calNote = rawToday == null ? srcSel : `<p class="muted small" style="margin:10px 0 0">
-      Today — Health total <strong>${fmt(dedup ?? 0)}</strong>${combined != null ? ` · iPhone+Watch added <strong>${fmt(combined)}</strong>` : ""}${stepCalibration() !== 1 ? ` · after your calibration <strong>${fmt(calSteps(rawToday))}</strong>` : ""}.
-    </p>${srcSel}`;
+  const calNote = "";
   const gI = $("#setting-step-goal"); if (gI && !gI.value) gI.value = state.settings.stepGoal;
   const wG = $("#setting-workout-goal"); if (wG && !wG.value) wG.value = state.settings.workoutGoalPerWeek;
   const rT = $("#setting-step-reminder"); if (rT) rT.checked = !!state.settings.stepReminder;
@@ -2488,33 +2477,16 @@ function renderStreakCard() {
       <div class="wk-bar"><i style="width:${Math.min(100, (s.workouts / s.workoutGoal) * 100).toFixed(0)}%"></i></div>
       <strong>${s.workouts}/${s.workoutGoal}${s.weekHit ? " ✓" : ""}</strong>
     </div>
-    <p class="muted small" style="margin:6px 0 0">Counts a session with 4+ sets, or any cardio.</p>
     <div class="wk-goal${s.week.ok ? " hit" : ""}" style="margin-top:10px">
       <span>👣 Steps this week</span>
       <div class="wk-bar"><i style="width:${Math.min(100, (s.week.total / s.week.need) * 100).toFixed(0)}%"></i></div>
       <strong>${fmt(Math.round(s.week.total))}/${fmt(Math.round(s.week.need))}${s.week.ok ? " ✓" : ""}</strong>
     </div>
-    <p class="muted small" style="margin:6px 0 0">${s.week.ok
-      ? `On pace — a day under ${fmt(s.goal)} won't break the streak this week.`
-      : `${fmt(Math.max(0, Math.round(s.week.need - s.week.total)))} more this week and light days stop breaking the streak (${fmt(s.weekFullGoal)}/week).`}</p>
-    ${calNote}
-    <p class="muted small native-only" id="widget-status" style="margin:8px 0 0"></p>`;
-  const bridge = window.Capacitor?.Plugins?.StreakBridge;
-  if (bridge?.status) bridge.status().then(st => {
-    const el = $("#widget-status"); if (!el) return;
-    el.textContent = st.hasSnapshot
-      ? `Widget sees: ${fmt(st.stepsToday ?? 0)} steps · updated ${new Date(st.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
-      : "Widget: no snapshot yet — open this tab once more or reopen the app.";
-  }).catch(() => {});
-  const srcSelEl = $("#setting-step-source");
-  if (srcSelEl) srcSelEl.value = state.settings.stepSource || "health";
+
+    ${calNote}`;
   const calA = $("#setting-cal-apple"), calB = $("#setting-cal-actual");
   if (calA && !calA.value && state.settings.stepCalApple) calA.value = state.settings.stepCalApple;
   if (calB && !calB.value && state.settings.stepCalActual) calB.value = state.settings.stepCalActual;
-  const fl = $("#cal-factor-line");
-  if (fl) fl.textContent = stepCalibration() !== 1
-    ? `Calibration ×${stepCalibration().toFixed(2)} — streak, widget, and reminders use your real steps.`
-    : "Optional: if Apple Health undercounts you, enter a measured pair and everything recalibrates.";
   syncStreakToNative();
 }
 
@@ -2523,7 +2495,7 @@ function renderBodyweightCard() {
   const cur = $("#bw-current"); if (!cur) return;
   const latest = latestBodyweight();
   cur.innerHTML = latest
-    ? `<div class="bw-big">${fmt(latest.lbs, 1)} <span class="tile-unit">${state.settings.units}</span></div><div class="muted small">${latest.date ? `${prettyDate(latest.date)} · ${latest.source === "health" ? "Apple Health" : "logged"}` : "from profile — log a reading to start a trend"}</div>`
+    ? `<div class="bw-big">${fmt(latest.lbs, 1)} <span class="tile-unit">${state.settings.units}</span></div><div class="muted small">${latest.date ? `${prettyDate(latest.date)} · ${latest.source === "health" ? "Apple Health" : "logged"}` : ""}</div>`
     : `<div class="muted small">No readings yet.</div>`;
   const idx = bodyweightIndex();
   const list = $("#bw-list");
@@ -2883,11 +2855,6 @@ function bindEvents() {
   const remH = $("#setting-step-reminder-hour");
   if (remH) remH.onchange = e => { state.settings.stepReminderHour = Math.min(22, Math.max(8, parseInt(e.target.value) || 19)); e.target.value = state.settings.stepReminderHour; saveState(); syncStreakToNative(); };
 
-  const srcEl = $("#setting-step-source");
-  if (srcEl) srcEl.onchange = e => {
-    state.settings.stepSource = e.target.value === "combined" ? "combined" : "health";
-    saveState(); renderStreakCard();
-  };
   const calPair = [["#setting-cal-apple", "stepCalApple"], ["#setting-cal-actual", "stepCalActual"]];
   calPair.forEach(([sel, key]) => {
     const el = $(sel);
@@ -3251,7 +3218,7 @@ function renderSyncCard() {
     let status = "Synced";
     if (cloudLastPushed) status = `Last sync ${relativeTime(cloudLastPushed)}`;
     if (syncStatus.pendingPush) status = "Changes waiting to sync…";
-    if (!syncStatus.online) status = "Offline — changes are saved on this device and will sync when you're back online";
+    if (!syncStatus.online) status = "Offline — will sync when you're back";
     if (cloudError) status = `⚠ ${cloudError}`;
     document.getElementById("sync-status").textContent = status;
   }

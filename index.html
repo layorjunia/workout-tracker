@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <title>Workout Tracker</title>
-<link rel="stylesheet" href="styles.css?v=44">
+<link rel="stylesheet" href="styles.css?v=45">
 </head>
 <body>
 
@@ -25,7 +25,7 @@
 <!-- Offline banner (hidden when online) -->
 <div id="net-banner" class="net-banner hidden" role="status">
   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4 4 0 0 1-.6-7.95A6 6 0 0 1 17.4 8.5M20 15.5A3.5 3.5 0 0 0 17 12"/><path d="M3 3l18 18"/></svg>
-  <span>Offline — everything saves on this phone and syncs when you're back in signal.</span>
+  <span>Offline — saved on this phone.</span>
 </div>
 
 <!-- iOS install banner: only shown to Safari users who haven't added to home screen -->
@@ -127,7 +127,6 @@
       </div>
       <div class="card">
         <h3>Sessions vs. your last time</h3>
-        <p class="muted small">Each exercise is compared to the previous session you did it — not to last week's total.</p>
         <div id="session-compare"></div>
       </div>
       <div class="card">
@@ -343,17 +342,14 @@
       </label>
       <div class="row" style="margin-top:12px; align-items:flex-end">
         <label class="col" style="margin:0">
-          <span class="label">Apple Health says</span>
+          <span class="label">Health reads</span>
           <input type="number" id="setting-cal-apple" inputmode="numeric" placeholder="7000">
         </label>
         <label class="col" style="margin:0">
-          <span class="label">I actually walked</span>
+          <span class="label">Actual</span>
           <input type="number" id="setting-cal-actual" inputmode="numeric" placeholder="10000">
         </label>
       </div>
-      <p class="muted small" id="cal-factor-line" style="margin:8px 0 0"></p>
-      <p class="muted small native-only" style="margin:8px 0 0">Also add the <strong>Workout Streak</strong> widget: long-press your home screen → + → Workout Tracker.</p>
-      <p class="muted small web-only" style="margin:8px 0 0">Reminders and the home-screen widget work in the iPhone app.</p>
     </div>
 
     <div class="card">
@@ -370,7 +366,6 @@
         <span class="label">Date</span>
         <input type="date" id="bw-date">
       </label>
-      <p class="muted small" style="margin:10px 0 0">Bodyweight exercises (pull-ups, dips…) use the reading closest before each session, so reps at 220 and reps at 250 are scored as different loads. Apple Health readings are included automatically.</p>
       <div class="chart-wrap hidden" style="height:140px"><canvas id="chart-bodyweight"></canvas></div>
       <div id="bw-list" class="bw-list"></div>
     </div>
@@ -437,7 +432,6 @@
     <button class="btn btn-ghost" id="btn-templates-add">+ New</button>
   </header>
   <div class="container">
-    <p class="muted small">These show up when you tap <strong>New</strong> on Today. Edit names, add or remove exercises, or build new templates for your splits.</p>
     <div id="templates-list"></div>
   </div>
 </section>
@@ -656,10 +650,10 @@
   </button>
 </nav>
 
-<script src="vendor/chart.umd.js?v=44"></script>
-<script src="app.js?v=44"></script>
-<script src="analytics.js?v=44"></script>
-<script type="module" src="vendor/firebase-sync.bundle.js?v=44"></script>
-<script src="capacitor-health.js?v=44"></script>
+<script src="vendor/chart.umd.js?v=45"></script>
+<script src="app.js?v=45"></script>
+<script src="analytics.js?v=45"></script>
+<script type="module" src="vendor/firebase-sync.bundle.js?v=45"></script>
+<script src="capacitor-health.js?v=45"></script>
 </body>
 </html>
