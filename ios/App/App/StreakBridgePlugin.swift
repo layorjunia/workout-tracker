@@ -88,7 +88,9 @@ public class StreakBridgePlugin: CAPPlugin, CAPBridgedPlugin {
         // the run of completed days before today; today adds at most one.
         let streakBase = call.getInt("streakBase")
             ?? max(0, (call.getInt("streak") ?? 0) - ((call.getBool("todayHit") ?? false) ? 1 : 0))
-        let hit = steps >= goal
+        // A day under the goal still counts when the week is running at goal pace
+        // (the app computes that from full history and passes the verdict here).
+        let hit = steps >= goal || (call.getBool("weekRescued") ?? false)
         let streak = streakBase + (hit ? 1 : 0)
         let snapshot: [String: Any] = [
             "date": day,

@@ -414,9 +414,18 @@ function sleepScoreFor(date) {
 // A day is "hit" when health.daily[date].stepsToday >= settings.stepGoal.
 // The streak counts consecutive hit days ending yesterday; today extends it
 // live once hit, but an unfinished today never breaks it.
-function stepsFor(date) {
-  const v = state.health?.daily?.[date]?.stepsToday;
+// iPhone and Watch both record the same walk. "health" uses Apple's own
+// de-duplicated total (what the Health app shows); "combined" adds every raw
+// sample from both devices, which counts overlapping steps more than once.
+function rawStepsOf(rec) {
+  if (!rec) return null;
+  const v = state.settings.stepSource === "combined"
+    ? (rec.stepsRawToday ?? rec.stepsToday)
+    : rec.stepsToday;
   return Number.isFinite(+v) ? +v : null;
+}
+function stepsFor(date) {
+  return rawStepsOf(state.health?.daily?.[date]);
 }
 // Apple Health undercounts Jacob's steps (measured: 7k reported ≈ 10k real).
 // Raw HealthKit values stay stored untouched; the factor applies at read time,
@@ -465,10 +474,17 @@ function streakTier(streak) {
   const label = w >= 4 && w < 6 ? "1 MONTH+" : `WEEK ${w}`;
   return { emoji, label, weeks: w, milestone: streak % 7 === 0 };
 }
+// Monday-start week containing a date.
+function weekStartOf(iso) {
+  const d = new Date(iso + "T00:00:00");
+  const mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return isoDateLocal(mon);
+}
+
 function streakInfo() {
   const goal = state.settings.stepGoal || 10000;
   const today = todayISO();
-  const todaySteps = calSteps(stepsFor(today) ?? (healthDataIsFromToday() ? (state.health?.data?.stepsToday ?? null) : null));
+  const todaySteps = calSteps(stepsFor(today) ?? (healthDataIsFromToday() ? (rawStepsOf(state.health?.data) ?? null) : null));
   const days = [];
   for (let i = 0; i < 60; i++) {
     const d = new Date(today + "T00:00:00"); d.setDate(d.getDate() - i);
@@ -476,19 +492,48 @@ function streakInfo() {
     const steps = iso === today ? todaySteps : calSteps(stepsFor(iso));
     days.push({ date: iso, steps, hit: steps != null && steps >= goal, known: steps != null });
   }
+
+  // Weekly rescue: a day under the daily goal still keeps the streak when its
+  // week is running at goal pace — 70k over a full week at a 10k goal. Weeks in
+  // progress are pro-rated (goal × days elapsed) so a strong week protects a
+  // light day immediately instead of only in hindsight.
+  const weekTotals = new Map();
+  for (const d of days) {
+    const k = weekStartOf(d.date);
+    weekTotals.set(k, (weekTotals.get(k) || 0) + (d.steps || 0));
+  }
+  const todayD = new Date(today + "T00:00:00");
+  const weekMeta = new Map();
+  for (const [k, total] of weekTotals) {
+    const mon = new Date(k + "T00:00:00");
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    const end = sun <= todayD ? sun : todayD;
+    const daysCounted = Math.max(1, Math.round((end - mon) / 86400000) + 1);
+    const need = goal * daysCounted;
+    weekMeta.set(k, { total, daysCounted, need, ok: total >= need, complete: sun <= todayD });
+  }
+  days.forEach(d => {
+    const m = weekMeta.get(weekStartOf(d.date));
+    d.rescued = !d.hit && !!m?.ok && d.known;
+    d.counts = d.hit || d.rescued;
+  });
+
   let streak = 0;
   for (let i = 1; i < days.length; i++) {         // start yesterday
-    if (days[i].hit) streak++;
+    if (days[i].counts) streak++;
     else break;
   }
-  const todayHit = days[0].hit;
+  const todayHit = days[0].counts;
   const streakBase = streak;          // completed days before today
   if (todayHit) streak++;
   const last14 = days.slice(0, 14).reverse();
   const wk = workoutsThisWeek();
   const wkGoal = state.settings.workoutGoalPerWeek || 3;
-  return { goal, streak, streakBase, todayHit, todaySteps: todaySteps ?? 0, last14, pct: Math.min(1, (todaySteps || 0) / goal),
-           workouts: wk, workoutGoal: wkGoal, weekHit: wk >= wkGoal };
+  const thisWeek = weekMeta.get(weekStartOf(today)) || { total: 0, need: goal, ok: false, daysCounted: 1 };
+  return { goal, streak, streakBase, todayHit, todayGoalMet: days[0].hit,
+           todaySteps: todaySteps ?? 0, last14, pct: Math.min(1, (todaySteps || 0) / goal),
+           workouts: wk, workoutGoal: wkGoal, weekHit: wk >= wkGoal,
+           week: thisWeek, weekRescued: !!thisWeek.ok, weekFullGoal: goal * 7 };
 }
 
 // Push the streak snapshot to the native side (widget + notifications). No-op on web.
@@ -499,9 +544,10 @@ function syncStreakToNative() {
   bridge.update({
     date: todayISO(),
     stepsToday: Math.round(s.todaySteps), goal: s.goal, streak: s.streak, streakBase: s.streakBase, todayHit: s.todayHit,
-    last7: s.last14.slice(-7).map(d => ({ date: d.date, hit: d.hit, known: d.known })),
+    last7: s.last14.slice(-7).map(d => ({ date: d.date, hit: !!d.counts, known: d.known })),
     reminderEnabled: !!state.settings.stepReminder,
     reminderHour: state.settings.stepReminderHour || 19,
+    weekRescued: !!s.weekRescued,
     calibration: stepCalibration(),
     workoutsThisWeek: s.workouts, workoutGoal: s.workoutGoal, weekHit: s.weekHit,
     updatedAt: Date.now(),
@@ -866,6 +912,7 @@ function migrate(s) {
   s.settings.stepReminder ??= false;
   s.settings.stepReminderHour ??= 19;   // 7 pm local
   s.settings.stepCalApple ??= null;     // "Apple Health says X…"
+  s.settings.stepSource ??= "health";   // "health" (Apple's de-duplicated) | "combined"
   s.settings.stepCalActual ??= null;    // "…but I actually walked Y" → factor Y/X
   s.settings.workoutGoalPerWeek ??= 4;
   s.profile = Object.assign(defaultProfile(), s.profile || {});
@@ -2398,10 +2445,18 @@ function renderStreakCard() {
   const dayRec = state.health?.daily?.[todayISO()] || {};
   const rawToday = dayRec.stepsToday ?? (healthDataIsFromToday() ? state.health?.data?.stepsToday : undefined);
   const rawSamples = dayRec.stepsRawToday ?? (healthDataIsFromToday() ? state.health?.data?.stepsRawToday : undefined);
-  const calNote = rawToday == null ? "" : `<p class="muted small" style="margin:10px 0 0">
-      Apple Health (de-duplicated) <strong>${fmt(rawToday)}</strong>${stepCalibration() !== 1 ? ` → calibrated <strong>${fmt(calSteps(rawToday))}</strong>` : ""}.
-      ${rawSamples != null && Math.abs(rawSamples - rawToday) > 200 ? `Raw sample sum is ${fmt(rawSamples)} (iPhone + Watch overlap) — the de-duplicated figure is the one the Health app shows.` : ""}
-    </p>`;
+  const dedup = dayRec.stepsToday ?? (healthDataIsFromToday() ? state.health?.data?.stepsToday : undefined);
+  const combined = dayRec.stepsRawToday ?? (healthDataIsFromToday() ? state.health?.data?.stepsRawToday : undefined);
+  const srcSel = `<label style="margin-top:10px">
+      <span class="label">Step source</span>
+      <select id="setting-step-source">
+        <option value="health">Apple Health total (de-duplicated)</option>
+        <option value="combined">iPhone + Watch samples added</option>
+      </select>
+    </label>`;
+  const calNote = rawToday == null ? srcSel : `<p class="muted small" style="margin:10px 0 0">
+      Today — Health total <strong>${fmt(dedup ?? 0)}</strong>${combined != null ? ` · iPhone+Watch added <strong>${fmt(combined)}</strong>` : ""}${stepCalibration() !== 1 ? ` · after your calibration <strong>${fmt(calSteps(rawToday))}</strong>` : ""}.
+    </p>${srcSel}`;
   const gI = $("#setting-step-goal"); if (gI && !gI.value) gI.value = state.settings.stepGoal;
   const wG = $("#setting-workout-goal"); if (wG && !wG.value) wG.value = state.settings.workoutGoalPerWeek;
   const rT = $("#setting-step-reminder"); if (rT) rT.checked = !!state.settings.stepReminder;
@@ -2410,7 +2465,7 @@ function renderStreakCard() {
   const R = 30, C = 2 * Math.PI * R;
   const ringOff = C * (1 - s.pct);
   const dots = s.last14.map(d => {
-    const cls = d.hit ? "hit" : d.known ? "miss" : "unknown";
+    const cls = d.hit ? "hit" : d.rescued ? "rescued" : d.known ? "miss" : "unknown";
     const dow = "SMTWTFS"[new Date(d.date + "T00:00:00").getDay()];
     return `<div class="streak-dot ${cls}${d.date === todayISO() ? " today" : ""}" title="${d.date}${d.steps != null ? ` · ${fmt(d.steps)}` : ""}"><i></i><span>${dow}</span></div>`;
   }).join("");
@@ -2434,6 +2489,14 @@ function renderStreakCard() {
       <strong>${s.workouts}/${s.workoutGoal}${s.weekHit ? " ✓" : ""}</strong>
     </div>
     <p class="muted small" style="margin:6px 0 0">Counts a session with 4+ sets, or any cardio.</p>
+    <div class="wk-goal${s.week.ok ? " hit" : ""}" style="margin-top:10px">
+      <span>👣 Steps this week</span>
+      <div class="wk-bar"><i style="width:${Math.min(100, (s.week.total / s.week.need) * 100).toFixed(0)}%"></i></div>
+      <strong>${fmt(Math.round(s.week.total))}/${fmt(Math.round(s.week.need))}${s.week.ok ? " ✓" : ""}</strong>
+    </div>
+    <p class="muted small" style="margin:6px 0 0">${s.week.ok
+      ? `On pace — a day under ${fmt(s.goal)} won't break the streak this week.`
+      : `${fmt(Math.max(0, Math.round(s.week.need - s.week.total)))} more this week and light days stop breaking the streak (${fmt(s.weekFullGoal)}/week).`}</p>
     ${calNote}
     <p class="muted small native-only" id="widget-status" style="margin:8px 0 0"></p>`;
   const bridge = window.Capacitor?.Plugins?.StreakBridge;
@@ -2443,6 +2506,8 @@ function renderStreakCard() {
       ? `Widget sees: ${fmt(st.stepsToday ?? 0)} steps · updated ${new Date(st.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
       : "Widget: no snapshot yet — open this tab once more or reopen the app.";
   }).catch(() => {});
+  const srcSelEl = $("#setting-step-source");
+  if (srcSelEl) srcSelEl.value = state.settings.stepSource || "health";
   const calA = $("#setting-cal-apple"), calB = $("#setting-cal-actual");
   if (calA && !calA.value && state.settings.stepCalApple) calA.value = state.settings.stepCalApple;
   if (calB && !calB.value && state.settings.stepCalActual) calB.value = state.settings.stepCalActual;
@@ -2818,6 +2883,11 @@ function bindEvents() {
   const remH = $("#setting-step-reminder-hour");
   if (remH) remH.onchange = e => { state.settings.stepReminderHour = Math.min(22, Math.max(8, parseInt(e.target.value) || 19)); e.target.value = state.settings.stepReminderHour; saveState(); syncStreakToNative(); };
 
+  const srcEl = $("#setting-step-source");
+  if (srcEl) srcEl.onchange = e => {
+    state.settings.stepSource = e.target.value === "combined" ? "combined" : "health";
+    saveState(); renderStreakCard();
+  };
   const calPair = [["#setting-cal-apple", "stepCalApple"], ["#setting-cal-actual", "stepCalActual"]];
   calPair.forEach(([sel, key]) => {
     const el = $(sel);
@@ -3032,12 +3102,17 @@ window.__applyStepHistory = (map) => {
   state.health.daily = state.health.daily || {};
   const today = todayISO();
   let changed = false;
-  for (const [date, steps] of Object.entries(map)) {
-    const v = Math.round(Number(steps) || 0);
-    if (v <= 0 || date === today) continue;
+  for (const [date, val] of Object.entries(map)) {
+    if (date === today) continue;
+    // Accepts either a bare number (de-duplicated) or {stepsToday, stepsRawToday}
+    const vals = typeof val === "object" && val ? val : { stepsToday: val };
     const rec = (state.health.daily[date] ||= {});
-    const cur = Number.isFinite(+rec.stepsToday) ? +rec.stepsToday : 0;
-    if (v > cur) { rec.stepsToday = v; rec.updatedAt = Date.now(); changed = true; }
+    for (const key of ["stepsToday", "stepsRawToday"]) {
+      const v = Math.round(Number(vals[key]) || 0);
+      if (v <= 0) continue;
+      const cur = Number.isFinite(+rec[key]) ? +rec[key] : 0;
+      if (v > cur) { rec[key] = v; rec.updatedAt = Date.now(); changed = true; }
+    }
   }
   if (changed) {
     saveState();

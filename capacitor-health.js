@@ -345,7 +345,17 @@
       const map = {};
       for (const s of samples || []) {
         const v = Number(s.value) || 0;
-        if (v > 0) map[localDate(s.startDate)] = Math.round(v);
+        if (v > 0) (map[localDate(s.startDate)] ||= {}).stepsToday = Math.round(v);
+      }
+      // Raw per-day sums too, so the "iPhone + Watch added" setting has history
+      // to work with rather than only today.
+      const raw = await read("steps", start.toISOString(), 30000, end.toISOString());
+      for (const s of raw || []) {
+        const v = Number(s.value) || 0;
+        if (v <= 0) continue;
+        const d = localDate(s.endDate || s.startDate);
+        const rec = (map[d] ||= {});
+        rec.stepsRawToday = Math.round((rec.stepsRawToday || 0) + v);
       }
       if (Object.keys(map).length) window.__applyStepHistory?.(map);
       return Object.keys(map).length;
