@@ -414,15 +414,9 @@ function sleepScoreFor(date) {
 // A day is "hit" when health.daily[date].stepsToday >= settings.stepGoal.
 // The streak counts consecutive hit days ending yesterday; today extends it
 // live once hit, but an unfinished today never breaks it.
-// iPhone and Watch both record the same walk. "health" uses Apple's own
-// de-duplicated total (what the Health app shows); "combined" adds every raw
-// sample from both devices, which counts overlapping steps more than once.
 function rawStepsOf(rec) {
-  if (!rec) return null;
-  const v = state.settings.stepSource === "combined"
-    ? (rec.stepsRawToday ?? rec.stepsToday)
-    : rec.stepsToday;
-  return Number.isFinite(+v) ? +v : null;
+  const v = rec?.stepsToday;
+  return v == null || !Number.isFinite(+v) ? null : +v;
 }
 function stepsFor(date) {
   return rawStepsOf(state.health?.daily?.[date]);
@@ -483,7 +477,7 @@ function weekStartOf(iso) {
 
 function streakInfo(today = todayISO()) {
   const goal = state.settings.stepGoal || 10000;
-  const todaySteps = calSteps(stepsFor(today) ?? (healthDataIsFromToday() ? (rawStepsOf(state.health?.data) ?? null) : null));
+  const todaySteps = calSteps(stepsFor(today) ?? (healthDataIsFromToday(today) ? (rawStepsOf(state.health?.data) ?? null) : null));
   const days = [];
   for (let i = 0; i < 400; i++) {
     const d = new Date(today + "T00:00:00"); d.setDate(d.getDate() - i);
@@ -543,12 +537,33 @@ function streakInfo(today = todayISO()) {
 }
 
 // Push the streak snapshot to the native side (widget + notifications). No-op on web.
+// The widget reads HealthKit on its own. Fold the highest count it saw for each
+// day into that day's record, so the app never pushes a lower number back.
+async function absorbNativeStepPeaks() {
+  const bridge = window.Capacitor?.Plugins?.StreakBridge;
+  if (!bridge?.status) return false;
+  try {
+    const peaks = (await bridge.status())?.stepPeaks || {};
+    let changed = false;
+    state.health.daily = state.health.daily || {};
+    for (const [date, raw] of Object.entries(peaks)) {
+      const v = Math.round(Number(raw) || 0);
+      if (v <= 0) continue;
+      const rec = (state.health.daily[date] ||= {});
+      if (!(Number(rec.stepsToday) >= v)) { rec.stepsToday = v; rec.updatedAt = Date.now(); changed = true; }
+    }
+    if (changed) saveState();
+    return changed;
+  } catch { return false; }
+}
+
 function syncStreakToNative() {
   const bridge = window.Capacitor?.Plugins?.StreakBridge;
   if (!bridge) return;
   const s = streakInfo();
   bridge.update({
     date: todayISO(),
+    stepsRaw: Math.round(Number(state.health?.daily?.[todayISO()]?.stepsToday) || 0),
     stepsToday: Math.round(s.todaySteps), goal: s.goal, streak: s.streak, streakBase: s.streakBase, todayHit: s.todayHit,
     last7: s.last14.slice(-7).map(d => ({ date: d.date, hit: !!d.counts, known: d.known })),
     reminderEnabled: !!state.settings.stepReminder,
@@ -768,7 +783,11 @@ function mergeStates(local, remote) {
   const lt = Date.parse(lh.data?.updatedAt || 0) || 0, rt = Date.parse(rh.data?.updatedAt || 0) || 0;
   const daily = { ...(rh.daily || {}) };
   for (const [d, v] of Object.entries(lh.daily || {})) {
-    daily[d] = (v.updatedAt || 0) >= (daily[d]?.updatedAt || 0) ? { ...(daily[d] || {}), ...v } : { ...v, ...daily[d] };
+    const r = daily[d];
+    daily[d] = (v.updatedAt || 0) >= (r?.updatedAt || 0) ? { ...(r || {}), ...v } : { ...v, ...r };
+    // A day's step count never goes down, whichever device's copy is newer.
+    const top = Math.max(Number(v.stepsToday) || 0, Number(r?.stepsToday) || 0);
+    if (top > 0) daily[d].stepsToday = top;
   }
   out.health = { ...(lt >= rt ? lh : rh), daily };
 
@@ -918,7 +937,7 @@ function migrate(s) {
   s.settings.stepReminder ??= false;
   s.settings.stepReminderHour ??= 19;   // 7 pm local
   s.settings.stepCalApple ??= null;     // "Apple Health says X…"
-  s.settings.stepSource ??= "health";   // "health" (Apple's de-duplicated) | "combined"
+  delete s.settings.stepSource;
   s.settings.stepCalActual ??= null;    // "…but I actually walked Y" → factor Y/X
   s.settings.workoutGoalPerWeek ??= 4;
   s.profile = Object.assign(defaultProfile(), s.profile || {});
@@ -2448,9 +2467,6 @@ function renderStreakCard() {
   const toNext = streakInfo().streak > 0 ? 7 - (streakInfo().streak % 7) : null;
   const nextTier = streakTier((Math.floor(streakInfo().streak / 7) + 1) * 7);
   const nextLine = toNext && toNext < 7 ? `<div class="muted small">${toNext} day${toNext > 1 ? "s" : ""} to ${nextTier.emoji} ${nextTier.label}</div>` : "";
-  const dayRec = state.health?.daily?.[todayISO()] || {};
-  const rawToday = dayRec.stepsToday ?? (healthDataIsFromToday() ? state.health?.data?.stepsToday : undefined);
-  const rawSamples = dayRec.stepsRawToday ?? (healthDataIsFromToday() ? state.health?.data?.stepsRawToday : undefined);
   const calNote = "";
   const gI = $("#setting-step-goal"); if (gI && !gI.value) gI.value = state.settings.stepGoal;
   const wG = $("#setting-workout-goal"); if (wG && !wG.value) wG.value = state.settings.workoutGoalPerWeek;
@@ -2483,10 +2499,10 @@ function renderStreakCard() {
       <div class="wk-bar"><i style="width:${Math.min(100, (s.workouts / s.workoutGoal) * 100).toFixed(0)}%"></i></div>
       <strong>${s.workouts}/${s.workoutGoal}${s.weekHit ? " ✓" : ""}</strong>
     </div>
-    <div class="wk-goal${s.week.total >= s.weekFullGoal ? " hit" : ""}" style="margin-top:10px">
+    <div class="wk-goal${s.week.total >= s.week.needWithToday ? " hit" : ""}" style="margin-top:10px">
       <span>👣 Steps this week</span>
-      <div class="wk-bar"><i style="width:${Math.min(100, (s.week.total / s.weekFullGoal) * 100).toFixed(0)}%"></i></div>
-      <strong>${fmt(Math.round(s.week.total))}/${fmt(s.weekFullGoal)}${s.week.total >= s.weekFullGoal ? " ✓" : ""}</strong>
+      <div class="wk-bar"><i style="width:${Math.min(100, (s.week.total / Math.max(1, s.week.needWithToday)) * 100).toFixed(0)}%"></i></div>
+      <strong>${fmt(Math.round(s.week.total))}/${fmt(s.week.needWithToday)}${s.week.total >= s.week.needWithToday ? " ✓" : ""}</strong>
     </div>
 
     ${calNote}`;
@@ -2596,11 +2612,11 @@ function addDaysISO(iso, n) {
 // The "latest" snapshot is whatever the last sync produced — which, before the
 // first sync of a new day, is YESTERDAY's numbers. Only treat it as today's when
 // it was actually recorded today, or the app reports yesterday's steps as today's.
-function healthDataIsFromToday() {
+function healthDataIsFromToday(day = todayISO()) {
   const u = state.health?.data?.updatedAt;
   if (!u) return false;
   const d = new Date(u);
-  return Number.isFinite(d.getTime()) && isoDateLocal(d) === todayISO();
+  return Number.isFinite(d.getTime()) && isoDateLocal(d) === day;
 }
 function healthFor(date) {
   const daily = state.health?.daily?.[date];
@@ -3108,10 +3124,10 @@ window.__applyStepHistory = (map) => {
   let changed = false;
   for (const [date, val] of Object.entries(map)) {
     if (date === today) continue;
-    // Accepts either a bare number (de-duplicated) or {stepsToday, stepsRawToday}
+    // Accepts either a bare number or {stepsToday}
     const vals = typeof val === "object" && val ? val : { stepsToday: val };
     const rec = (state.health.daily[date] ||= {});
-    for (const key of ["stepsToday", "stepsRawToday"]) {
+    for (const key of ["stepsToday"]) {
       const v = Math.round(Number(vals[key]) || 0);
       if (v <= 0) continue;
       const cur = Number.isFinite(+rec[key]) ? +rec[key] : 0;
@@ -3135,12 +3151,11 @@ window.__applyNativeHealth = (metrics) => {
   // through the day, so later syncs overwrite earlier ones for the same date.
   const today = todayISO();
   const prevDay = state.health.daily[today] || {};
-  const tzNow = currentTZ();
-  const rec = { ...prevDay, ...metrics, updatedAt: now, tz: prevDay.tz || tzNow };
-  // Reaching the same date again from another zone (flying west past midnight)
-  // must not lower a count taken on the other zone's day boundaries.
-  if (prevDay.tz && tzNow && prevDay.tz !== tzNow && Number.isFinite(+prevDay.stepsToday)) {
-    rec.stepsToday = Math.max(+prevDay.stepsToday, +(metrics.stepsToday ?? 0));
+  const rec = { ...prevDay, ...metrics, updatedAt: now, tz: prevDay.tz || currentTZ() };
+  // A day's step count never goes back down: once a number has been shown, a
+  // later, lower reading for the same day can't take it away.
+  if (Number.isFinite(+prevDay.stepsToday) && prevDay.stepsToday != null) {
+    rec.stepsToday = Math.max(+prevDay.stepsToday, Number.isFinite(+metrics.stepsToday) ? +metrics.stepsToday : 0);
   }
   state.health.daily[today] = rec;
   state.health.lastFetch = now;
@@ -3286,6 +3301,10 @@ function init() {
     maybeShowInstallBanner();
   } else {
     document.documentElement.classList.add("native");
+    setTimeout(async () => {
+      if (await absorbNativeStepPeaks() && document.getElementById("streak-card")) renderStreakCard();
+      syncStreakToNative();
+    }, 800);
   }
 
   // Reset inactivity timer on any user interaction
@@ -3310,7 +3329,10 @@ function init() {
   // Any return to the app refreshes the widget snapshot, whatever tab is showing —
 // the widget must never be able to disagree with what the app knows.
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) setTimeout(syncStreakToNative, 300);
+  if (!document.hidden) setTimeout(async () => {
+    if (await absorbNativeStepPeaks() && document.getElementById("streak-card")) renderStreakCard();
+    syncStreakToNative();
+  }, 300);
 }, { capture: true });
 
 document.addEventListener("visibilitychange", () => { if (document.hidden) flushOnHide(); });

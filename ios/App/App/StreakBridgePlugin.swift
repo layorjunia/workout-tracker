@@ -42,26 +42,16 @@ public class StreakBridgePlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    /// Widget reloads draw from a limited daily budget — when it runs out, iOS
-    /// silently pins the widget to a stale entry. Reload only when the data
-    /// meaningfully changed, and at most every 4 minutes.
-    static func maybeReloadWidgets(old: [String: Any]?, new: [String: Any], defaults: UserDefaults?) {
+    static func maybeReloadWidgets(old: [String: Any]?, new: [String: Any], defaults: UserDefaults?, foreground: Bool = false) {
         guard #available(iOS 14.0, *) else { return }
-        let bucket = { (s: [String: Any]) -> String in
-            let steps = (s["stepsToday"] as? Int ?? 0) / 250
-            return "\(steps)|\(s["todayHit"] as? Bool ?? false)|\(s["streak"] as? Int ?? 0)|\(s["workoutsThisWeek"] as? Int ?? 0)|\(s["weekHit"] as? Bool ?? false)|\(s["goal"] as? Int ?? 0)|\(s["date"] as? String ?? "")"
-        }
-        let changed = old == nil || bucket(old!) != bucket(new)
-        // A new day or a goal just being reached is never throttled — those are
-        // exactly the moments the widget must not lag behind.
-        let urgent = old == nil
-            || (old?["date"] as? String) != (new["date"] as? String)
-            || (old?["todayHit"] as? Bool ?? false) != (new["todayHit"] as? Bool ?? false)
-            || (old?["weekHit"] as? Bool ?? false) != (new["weekHit"] as? Bool ?? false)
-        let last = defaults?.double(forKey: "lastWidgetReload") ?? 0
+        let bucket = StreakRollover.widgetBucket(new)
         let now = Date().timeIntervalSince1970
-        if changed && (urgent || now - last > 240) {
+        if StreakRollover.shouldReloadWidget(lastBucket: defaults?.string(forKey: "lastWidgetBucket"),
+                                             newBucket: bucket,
+                                             lastReload: defaults?.double(forKey: "lastWidgetReload") ?? 0,
+                                             now: now, foreground: foreground) {
             defaults?.set(now, forKey: "lastWidgetReload")
+            defaults?.set(bucket, forKey: "lastWidgetBucket")
             WidgetCenter.shared.reloadAllTimelines()
         }
     }
@@ -72,16 +62,17 @@ public class StreakBridgePlugin: CAPPlugin, CAPBridgedPlugin {
         let day = Self.localDay()
         var steps = call.getInt("stepsToday") ?? 0
         let goal = call.getInt("goal") ?? 10000
-        // The app's value is AUTHORITATIVE: it comes from a full de-duplicated
-        // HealthKit statistics query with calibration applied, computed with the
-        // app in the foreground. It may legitimately correct DOWNWARD (e.g. when
-        // a stale double-counted value is stored). The only thing never allowed
-        // to overwrite a real count is a zero/missing read.
-        if steps <= 0,
-           let ex = existing,
-           ex["date"] as? String == day,
-           let exSteps = ex["stepsToday"] as? Int {
-            steps = exSteps
+        // A day's step count never goes back down: once a number has been shown,
+        // a later, lower reading can't take it away. A calibration change is the
+        // one legitimate reason it can drop.
+        if let ex = existing, ex["date"] as? String == day, let exSteps = ex["stepsToday"] as? Int {
+            let sameCalibration = abs((ex["calibration"] as? Double ?? 1.0) - (call.getDouble("calibration") ?? 1.0)) < 0.0001
+            if steps <= 0 || sameCalibration { steps = max(steps, exSteps) }
+        }
+        if let raw = call.getInt("stepsRaw"), raw > 0 {
+            var peaks = defaults?.dictionary(forKey: "stepPeaks") as? [String: Int] ?? [:]
+            StreakRollover.recordPeak(&peaks, day: day, raw: raw)
+            defaults?.set(peaks, forKey: "stepPeaks")
         }
         // Derive hit + streak from the FINAL step count so the snapshot can never
         // say "13,800 steps" and "goal not hit" at the same time. streakBase is
@@ -110,7 +101,7 @@ public class StreakBridgePlugin: CAPPlugin, CAPBridgedPlugin {
             "updatedAt": Date().timeIntervalSince1970,
         ]
         Self.writeSnapshot(snapshot, to: defaults)
-        Self.maybeReloadWidgets(old: existing, new: snapshot, defaults: defaults)
+        Self.maybeReloadWidgets(old: existing, new: snapshot, defaults: defaults, foreground: true)
         Self.rescheduleReminder(
             enabled: call.getBool("reminderEnabled") ?? false,
             hour: call.getInt("reminderHour") ?? 19,
@@ -126,13 +117,14 @@ public class StreakBridgePlugin: CAPPlugin, CAPBridgedPlugin {
         guard let json = defaults?.string(forKey: "streakSnapshot"),
               let data = json.data(using: .utf8),
               let snap = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            call.resolve(["hasSnapshot": false])
+            call.resolve(["hasSnapshot": false, "stepPeaks": defaults?.dictionary(forKey: "stepPeaks") ?? [:]])
             return
         }
         call.resolve([
             "hasSnapshot": true,
             "stepsToday": snap["stepsToday"] as? Int ?? 0,
             "updatedAt": ((snap["updatedAt"] as? Double) ?? 0) * 1000,
+            "stepPeaks": defaults?.dictionary(forKey: "stepPeaks") ?? [:],
         ])
     }
 

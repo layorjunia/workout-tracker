@@ -148,3 +148,40 @@ extension StreakRollover {
         return true
     }
 }
+
+// MARK: - Daily step peaks
+extension StreakRollover {
+    /// Highest step count seen for each day, so a later lower reading can never
+    /// erase a number that was already shown. Keeps the most recent `keepDays`.
+    static func recordPeak(_ peaks: inout [String: Int], day: String, raw: Int, keepDays: Int = 10) {
+        guard raw > 0 else { return }
+        peaks[day] = max(peaks[day] ?? 0, raw)
+        for key in Array(peaks.keys) {
+            if let gap = dayGap(from: key, to: day), gap >= keepDays { peaks.removeValue(forKey: key) }
+        }
+    }
+}
+
+// MARK: - Widget refresh decisions
+extension StreakRollover {
+    /// What the widget visibly shows. Steps are bucketed so small changes don't
+    /// spend background refreshes.
+    static func widgetBucket(_ s: [String: Any]) -> String {
+        let steps = (s["stepsToday"] as? Int ?? 0) / 250
+        return "\(s["date"] as? String ?? "")|\(steps)|\(s["todayHit"] as? Bool ?? false)|\(s["streak"] as? Int ?? 0)|\(s["workoutsThisWeek"] as? Int ?? 0)|\(s["weekHit"] as? Bool ?? false)|\(s["goal"] as? Int ?? 0)"
+    }
+
+    /// Compared against what the widget last RENDERED, so a skipped refresh is
+    /// retried on the next write instead of being lost. Foreground refreshes
+    /// don't count against WidgetKit's budget and are never throttled; in the
+    /// background, a new day, the goal state, and the streak never wait either.
+    static func shouldReloadWidget(lastBucket: String?, newBucket: String, lastReload: Double, now: Double, foreground: Bool) -> Bool {
+        guard lastBucket != newBucket else { return false }
+        if foreground || lastBucket == nil { return true }
+        let a = (lastBucket ?? "").split(separator: "|", omittingEmptySubsequences: false)
+        let b = newBucket.split(separator: "|", omittingEmptySubsequences: false)
+        let field = { (parts: [Substring], i: Int) -> String in i < parts.count ? String(parts[i]) : "" }
+        let urgent = [0, 2, 3, 5].contains { field(a, $0) != field(b, $0) }
+        return urgent || now - lastReload > 240
+    }
+}

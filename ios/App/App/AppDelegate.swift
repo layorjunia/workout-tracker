@@ -52,7 +52,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         if changed {
             snap["updatedAt"] = Date().timeIntervalSince1970
             StreakBridgePlugin.writeSnapshot(snap, to: defaults)
-            StreakBridgePlugin.maybeReloadWidgets(old: existing, new: snap, defaults: defaults)
+            StreakBridgePlugin.maybeReloadWidgets(old: existing, new: snap, defaults: defaults, foreground: task == nil)
         }
 
         let store = HKHealthStore()
@@ -64,12 +64,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         let predicate = HKQuery.predicateForSamples(withStart: start, end: Date())
         let calibration = snap["calibration"] as? Double ?? 1.0
         let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, stats, _ in
-            var steps = Int((stats?.sumQuantity()?.doubleValue(for: .count()) ?? 0) * calibration)
-            // Health revises its total as iPhone and Watch data reconcile, so a fresh
-            // read replaces the stored one. Only a zero read (phone locked, data
-            // unavailable) keeps what was already there.
+            let rawCount = Int(stats?.sumQuantity()?.doubleValue(for: .count()) ?? 0)
+            var steps = Int(Double(rawCount) * calibration)
+            // A day\'s step count never goes back down, whatever Health reports later.
             if snap["date"] as? String == day, let exSteps = snap["stepsToday"] as? Int {
-                if steps <= 0 { steps = exSteps }
+                steps = max(steps, exSteps)
+            }
+            if rawCount > 0 {
+                var peaks = defaults?.dictionary(forKey: "stepPeaks") as? [String: Int] ?? [:]
+                StreakRollover.recordPeak(&peaks, day: day, raw: rawCount)
+                defaults?.set(peaks, forKey: "stepPeaks")
             }
             // hit/streak always follow the final step count — same shared rule
             // the plugin and widget use, so the writers can never disagree.
@@ -79,7 +83,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             let hit = snap["todayHit"] as? Bool ?? false
             snap["updatedAt"] = Date().timeIntervalSince1970
             StreakBridgePlugin.writeSnapshot(snap, to: defaults)
-            StreakBridgePlugin.maybeReloadWidgets(old: existing, new: snap, defaults: defaults)
+            StreakBridgePlugin.maybeReloadWidgets(old: existing, new: snap, defaults: defaults, foreground: task == nil)
             StreakBridgePlugin.rescheduleReminder(
                 enabled: snap["reminderEnabled"] as? Bool ?? false,
                 hour: snap["reminderHour"] as? Int ?? 19,

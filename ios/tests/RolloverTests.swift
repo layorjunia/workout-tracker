@@ -109,5 +109,32 @@ check("repair corrects it", StreakRollover.repairConsistency(&plain, today: toda
 check("today not hit", plain["todayHit"] as? Bool ?? true, false)
 check("streak = base", plain["streak"] as? Int ?? -1, 10)
 
+print("\n12) step peaks: a lower later reading never erases the day's high")
+var peaks: [String: Int] = [:]
+StreakRollover.recordPeak(&peaks, day: today, raw: 7650)
+StreakRollover.recordPeak(&peaks, day: today, raw: 7340)
+check("keeps the 11:30pm high", peaks[today] ?? -1, 7650)
+StreakRollover.recordPeak(&peaks, day: today, raw: 0)
+check("ignores a zero read", peaks[today] ?? -1, 7650)
+StreakRollover.recordPeak(&peaks, day: today, raw: 7700)
+check("rises with a higher reading", peaks[today] ?? -1, 7700)
+let twelveDaysAgo = StreakRollover.localDay(cal.date(byAdding: .day, value: -12, to: Date())!)
+peaks[twelveDaysAgo] = 9000
+StreakRollover.recordPeak(&peaks, day: today, raw: 7700)
+check("prunes days older than 10", peaks[twelveDaysAgo] == nil, true)
+
+print("\n13) widget refresh: a streak change always lands; nothing gets lost")
+let snapA: [String: Any] = ["date": today, "stepsToday": 7650, "todayHit": false, "streak": 0,
+                            "workoutsThisWeek": 2, "weekHit": false, "goal": 10000]
+var snapB = snapA; snapB["streak"] = 2
+var snapC = snapA; snapC["stepsToday"] = 8000
+let bA = StreakRollover.widgetBucket(snapA), bB = StreakRollover.widgetBucket(snapB), bC = StreakRollover.widgetBucket(snapC)
+check("unchanged → no refresh", StreakRollover.shouldReloadWidget(lastBucket: bA, newBucket: bA, lastReload: 0, now: 1000, foreground: true), false)
+check("app open, streak changed right after a refresh → refresh", StreakRollover.shouldReloadWidget(lastBucket: bA, newBucket: bB, lastReload: 999, now: 1000, foreground: true), true)
+check("background, streak changed → refresh now", StreakRollover.shouldReloadWidget(lastBucket: bA, newBucket: bB, lastReload: 999, now: 1000, foreground: false), true)
+check("background, steps only, within 4 min → waits", StreakRollover.shouldReloadWidget(lastBucket: bA, newBucket: bC, lastReload: 900, now: 1000, foreground: false), false)
+check("…and still lands on the next write after 4 min", StreakRollover.shouldReloadWidget(lastBucket: bA, newBucket: bC, lastReload: 700, now: 1000, foreground: false), true)
+check("first refresh ever", StreakRollover.shouldReloadWidget(lastBucket: nil, newBucket: bA, lastReload: 0, now: 1, foreground: false), true)
+
 print(failures == 0 ? "\nALL PASS" : "\n\(failures) FAILURES")
 exit(failures == 0 ? 0 : 1)
