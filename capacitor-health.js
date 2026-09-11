@@ -357,6 +357,29 @@
         const rec = (map[d] ||= {});
         rec.stepsRawToday = Math.round((rec.stepsRawToday || 0) + v);
       }
+      // Days lived in another time zone are re-read on that zone's own midnight.
+      if (typeof tzStartOfDay === "function" && typeof todayISO === "function") {
+        const here = currentTZ();
+        const today = todayISO();
+        const recent = Array.from({ length: days }, (_, i) => addDaysISO(today, -(i + 1)));
+        const stamped = window.__getDailyTZ?.(recent) || {};
+        for (const [date, tz] of Object.entries(stamped)) {
+          if (!tz || tz === here) continue;
+          try {
+            const { samples: own } = await h.queryAggregated({
+              dataType: "steps",
+              startDate: tzStartOfDay(date, tz).toISOString(),
+              endDate: tzStartOfDay(addDaysISO(date, 1), tz).toISOString(),
+              bucket: "day", aggregation: "sum",
+            });
+            const total = Math.round((own || []).reduce((acc, s) => acc + (Number(s.value) || 0), 0));
+            if (total > 0) {
+              const rec = (map[date] ||= {});
+              rec.stepsToday = Math.max(rec.stepsToday || 0, total);
+            }
+          } catch (e) { console.warn("[health] zone re-read", date, e?.message || e); }
+        }
+      }
       if (Object.keys(map).length) window.__applyStepHistory?.(map);
       return Object.keys(map).length;
     } catch (e) {

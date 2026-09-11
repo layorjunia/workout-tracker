@@ -84,5 +84,30 @@ print("\n8) a snapshot with no date is left alone (nothing to roll)")
 var undated: [String: Any] = ["stepsToday": 500, "goal": 10000, "streak": 0]
 check("no roll", StreakRollover.rollSnapshot(&undated, to: today), false)
 
+print("\n9) week-pace verdict survives a native consistency repair")
+var rescued: [String: Any] = ["date": today, "stepsToday": 9658, "goal": 10000,
+                              "streak": 11, "streakBase": 10, "todayHit": true, "weekRescued": true,
+                              "workoutsThisWeek": 2, "weekHit": false, "workoutGoal": 4]
+check("no change needed", StreakRollover.repairConsistency(&rescued, today: today), false)
+check("today still counts", rescued["todayHit"] as? Bool ?? false, true)
+check("streak intact", rescued["streak"] as? Int ?? -1, 11)
+
+print("\n10) a covered yesterday carries overnight; the verdict resets for the new day")
+var carried: [String: Any] = ["date": yesterday, "stepsToday": 9658, "goal": 10000,
+                              "streak": 11, "streakBase": 10, "todayHit": true, "weekRescued": true,
+                              "workoutsThisWeek": 2, "weekHit": false, "workoutGoal": 4]
+StreakRollover.rollSnapshot(&carried, to: today)
+check("streak carried", carried["streak"] as? Int ?? -1, 11)
+check("today pending", carried["todayHit"] as? Bool ?? true, false)
+check("verdict reset", carried["weekRescued"] as? Bool ?? true, false)
+
+print("\n11) without the verdict, a day under goal doesn't count")
+var plain: [String: Any] = ["date": today, "stepsToday": 9658, "goal": 10000,
+                            "streak": 11, "streakBase": 10, "todayHit": true,
+                            "workoutsThisWeek": 2, "weekHit": false, "workoutGoal": 4]
+check("repair corrects it", StreakRollover.repairConsistency(&plain, today: today), true)
+check("today not hit", plain["todayHit"] as? Bool ?? true, false)
+check("streak = base", plain["streak"] as? Int ?? -1, 10)
+
 print(failures == 0 ? "\nALL PASS" : "\n\(failures) FAILURES")
 exit(failures == 0 ? 0 : 1)

@@ -232,7 +232,7 @@ struct StreakWidgetView: View {
     func ring(s: StreakSnapshot, pct: Double, tier: Tier) -> some View {
         let wkPct = s.workoutGoal > 0 ? Double(s.workoutsThisWeek) / Double(s.workoutGoal) : 0
         return ZStack {
-            RingView(pct: pct, done: s.todayHit, tint: s.streak >= 7 ? tier.color : .blue, lineWidth: 7)
+            RingView(pct: pct, done: s.stepsToday >= s.goal, tint: s.streak >= 7 ? tier.color : .blue, lineWidth: 7)
             RingView(pct: wkPct, done: s.weekHit, tint: .purple, lineWidth: 5)
                 .frame(width: 46, height: 46)
             Text(fmtSteps(s.stepsToday))

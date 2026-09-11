@@ -65,11 +65,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         let calibration = snap["calibration"] as? Double ?? 1.0
         let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, stats, _ in
             var steps = Int((stats?.sumQuantity()?.doubleValue(for: .count()) ?? 0) * calibration)
-            // HealthKit can return 0/partial while the phone is locked or mid-sync.
-            // Same-day values are monotonic: never write a lower number than the
-            // snapshot already holds, and never zero a day that had steps.
+            // Health revises its total as iPhone and Watch data reconcile, so a fresh
+            // read replaces the stored one. Only a zero read (phone locked, data
+            // unavailable) keeps what was already there.
             if snap["date"] as? String == day, let exSteps = snap["stepsToday"] as? Int {
-                steps = max(steps, exSteps)
+                if steps <= 0 { steps = exSteps }
             }
             // hit/streak always follow the final step count — same shared rule
             // the plugin and widget use, so the writers can never disagree.

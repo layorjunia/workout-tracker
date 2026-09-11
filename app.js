@@ -481,12 +481,11 @@ function weekStartOf(iso) {
   return isoDateLocal(mon);
 }
 
-function streakInfo() {
+function streakInfo(today = todayISO()) {
   const goal = state.settings.stepGoal || 10000;
-  const today = todayISO();
   const todaySteps = calSteps(stepsFor(today) ?? (healthDataIsFromToday() ? (rawStepsOf(state.health?.data) ?? null) : null));
   const days = [];
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 400; i++) {
     const d = new Date(today + "T00:00:00"); d.setDate(d.getDate() - i);
     const iso = isoDateLocal(d);
     const steps = iso === today ? todaySteps : calSteps(stepsFor(iso));
@@ -495,8 +494,7 @@ function streakInfo() {
 
   // Weekly rescue: a day under the daily goal still keeps the streak when its
   // week is running at goal pace — 70k over a full week at a 10k goal. Weeks in
-  // progress are pro-rated (goal × days elapsed) so a strong week protects a
-  // light day immediately instead of only in hindsight.
+  // progress are measured against the days that have finished.
   const weekTotals = new Map();
   for (const d of days) {
     const k = weekStartOf(d.date);
@@ -507,14 +505,22 @@ function streakInfo() {
   for (const [k, total] of weekTotals) {
     const mon = new Date(k + "T00:00:00");
     const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
-    const end = sun <= todayD ? sun : todayD;
-    const daysCounted = Math.max(1, Math.round((end - mon) / 86400000) + 1);
-    const need = goal * daysCounted;
-    weekMeta.set(k, { total, daysCounted, need, ok: total >= need, complete: sun <= todayD });
+    const complete = sun < todayD;
+    // Only finished days owe their quota. Charging today's quota from 12:01am
+    // put the week a full day behind overnight and dropped days it had covered.
+    const daysDone = complete ? 7 : Math.max(0, Math.round((todayD - mon) / 86400000));
+    const need = goal * daysDone;
+    const needWithToday = complete ? need : need + goal;
+    weekMeta.set(k, { total, daysDone, need, needWithToday, complete,
+                      ok: daysDone > 0 && total >= need,
+                      okWithToday: total >= needWithToday });
   }
   days.forEach(d => {
     const m = weekMeta.get(weekStartOf(d.date));
-    d.rescued = !d.hit && !!m?.ok && d.known;
+    // Finished days: covered when the week is at pace through its finished days.
+    // Today: only when the week would still be at pace if today ended now.
+    const covered = d.date === today ? !!m?.okWithToday : !!m?.ok;
+    d.rescued = !d.hit && covered && d.known;
     d.counts = d.hit || d.rescued;
   });
 
@@ -529,11 +535,11 @@ function streakInfo() {
   const last14 = days.slice(0, 14).reverse();
   const wk = workoutsThisWeek();
   const wkGoal = state.settings.workoutGoalPerWeek || 3;
-  const thisWeek = weekMeta.get(weekStartOf(today)) || { total: 0, need: goal, ok: false, daysCounted: 1 };
+  const thisWeek = weekMeta.get(weekStartOf(today)) || { total: 0, need: 0, needWithToday: goal, ok: false, okWithToday: false };
   return { goal, streak, streakBase, todayHit, todayGoalMet: days[0].hit,
            todaySteps: todaySteps ?? 0, last14, pct: Math.min(1, (todaySteps || 0) / goal),
            workouts: wk, workoutGoal: wkGoal, weekHit: wk >= wkGoal,
-           week: thisWeek, weekRescued: !!thisWeek.ok, weekFullGoal: goal * 7 };
+           week: thisWeek, weekRescued: !!thisWeek.okWithToday, weekFullGoal: goal * 7 };
 }
 
 // Push the streak snapshot to the native side (widget + notifications). No-op on web.
@@ -2461,7 +2467,7 @@ function renderStreakCard() {
   host.innerHTML = `
     <div class="streak-top">
       <div class="streak-ring">
-        <svg viewBox="0 0 72 72"><circle class="ring-bg" cx="36" cy="36" r="${R}"/><circle class="ring-fg${s.todayHit ? " done" : ""}" cx="36" cy="36" r="${R}" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${ringOff.toFixed(1)}"/></svg>
+        <svg viewBox="0 0 72 72"><circle class="ring-bg" cx="36" cy="36" r="${R}"/><circle class="ring-fg${s.todayGoalMet ? " done" : ""}" cx="36" cy="36" r="${R}" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${ringOff.toFixed(1)}"/></svg>
         <div class="ring-label"><strong>${fmt(s.todaySteps)}</strong><span>of ${fmt(s.goal)}</span></div>
       </div>
       <div class="streak-count">
@@ -2477,10 +2483,10 @@ function renderStreakCard() {
       <div class="wk-bar"><i style="width:${Math.min(100, (s.workouts / s.workoutGoal) * 100).toFixed(0)}%"></i></div>
       <strong>${s.workouts}/${s.workoutGoal}${s.weekHit ? " ✓" : ""}</strong>
     </div>
-    <div class="wk-goal${s.week.ok ? " hit" : ""}" style="margin-top:10px">
+    <div class="wk-goal${s.week.total >= s.weekFullGoal ? " hit" : ""}" style="margin-top:10px">
       <span>👣 Steps this week</span>
-      <div class="wk-bar"><i style="width:${Math.min(100, (s.week.total / s.week.need) * 100).toFixed(0)}%"></i></div>
-      <strong>${fmt(Math.round(s.week.total))}/${fmt(Math.round(s.week.need))}${s.week.ok ? " ✓" : ""}</strong>
+      <div class="wk-bar"><i style="width:${Math.min(100, (s.week.total / s.weekFullGoal) * 100).toFixed(0)}%"></i></div>
+      <strong>${fmt(Math.round(s.week.total))}/${fmt(s.weekFullGoal)}${s.week.total >= s.weekFullGoal ? " ✓" : ""}</strong>
     </div>
 
     ${calNote}`;
@@ -2562,6 +2568,31 @@ function updateBalance(date, n) {
 
 // Health metrics for a given date: daily history first; for today, fall back to
 // the latest snapshot (which the native sync / Shortcut keeps current).
+// Day boundaries belong to the time zone a day was lived in, so steps taken just
+// before midnight stay with that day after the phone changes zones.
+function currentTZ() {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { return ""; }
+}
+function tzOffsetMinutes(tz, date) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  }).formatToParts(date).map(p => [p.type, p.value]));
+  const asUTC = Date.UTC(+parts.year, +parts.month - 1, +parts.day, (+parts.hour) % 24, +parts.minute, +parts.second);
+  return Math.round((asUTC - date.getTime()) / 60000);
+}
+function tzStartOfDay(iso, tz) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const wall = Date.UTC(y, m - 1, d);
+  let t = wall - tzOffsetMinutes(tz, new Date(wall)) * 60000;
+  t = wall - tzOffsetMinutes(tz, new Date(t)) * 60000;   // second pass settles DST
+  return new Date(t);
+}
+function addDaysISO(iso, n) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
 // The "latest" snapshot is whatever the last sync produced — which, before the
 // first sync of a new day, is YESTERDAY's numbers. Only treat it as today's when
 // it was actually recorded today, or the app reports yesterday's steps as today's.
@@ -3063,6 +3094,12 @@ async function runFullBackfill(btn) {
 // Daily step totals for recent days. Past days only ever move UP (a day logged
 // at noon shouldn't stay stuck at its midday count and break the streak); today
 // is owned by the live sync, so it's left alone here.
+window.__getDailyTZ = (dates) => {
+  const out = {};
+  for (const d of dates || []) { const tz = state.health?.daily?.[d]?.tz; if (tz) out[d] = tz; }
+  return out;
+};
+
 window.__applyStepHistory = (map) => {
   if (!map || typeof map !== "object") return;
   state.health = state.health || { lastFetch: null, data: null, lastError: null, daily: {} };
@@ -3097,7 +3134,15 @@ window.__applyNativeHealth = (metrics) => {
   // Daily history keyed by local date — "today" metrics (steps/kcal) accumulate
   // through the day, so later syncs overwrite earlier ones for the same date.
   const today = todayISO();
-  state.health.daily[today] = { ...(state.health.daily[today] || {}), ...metrics, updatedAt: now };
+  const prevDay = state.health.daily[today] || {};
+  const tzNow = currentTZ();
+  const rec = { ...prevDay, ...metrics, updatedAt: now, tz: prevDay.tz || tzNow };
+  // Reaching the same date again from another zone (flying west past midnight)
+  // must not lower a count taken on the other zone's day boundaries.
+  if (prevDay.tz && tzNow && prevDay.tz !== tzNow && Number.isFinite(+prevDay.stepsToday)) {
+    rec.stepsToday = Math.max(+prevDay.stepsToday, +(metrics.stepsToday ?? 0));
+  }
+  state.health.daily[today] = rec;
   state.health.lastFetch = now;
   state.health.lastError = null;
   saveState();

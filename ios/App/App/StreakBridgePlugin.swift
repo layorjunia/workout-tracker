@@ -106,6 +106,7 @@ public class StreakBridgePlugin: CAPPlugin, CAPBridgedPlugin {
             "workoutsThisWeek": call.getInt("workoutsThisWeek") ?? 0,
             "workoutGoal": call.getInt("workoutGoal") ?? 3,
             "weekHit": call.getBool("weekHit") ?? false,
+            "weekRescued": call.getBool("weekRescued") ?? false,
             "updatedAt": Date().timeIntervalSince1970,
         ]
         Self.writeSnapshot(snapshot, to: defaults)

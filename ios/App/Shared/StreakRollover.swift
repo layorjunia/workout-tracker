@@ -18,6 +18,7 @@ struct StreakCore {
     var weekHit: Bool
     var workoutGoal: Int
     var stale: Bool = false     // true when we can't verify the days in between
+    var weekRescued: Bool = false  // today covered by the week's step pace (computed by the app)
 }
 
 enum StreakRollover {
@@ -67,6 +68,7 @@ enum StreakRollover {
         out.date = today
         out.stepsToday = 0
         out.todayHit = false
+        out.weekRescued = false
 
         let gap = dayGap(from: core.date, to: today) ?? 99
         if gap == 1 {
@@ -106,7 +108,8 @@ extension StreakRollover {
             todayHit: snap["todayHit"] as? Bool ?? false,
             workoutsThisWeek: snap["workoutsThisWeek"] as? Int ?? 0,
             weekHit: snap["weekHit"] as? Bool ?? false,
-            workoutGoal: snap["workoutGoal"] as? Int ?? 3)
+            workoutGoal: snap["workoutGoal"] as? Int ?? 3,
+            weekRescued: snap["weekRescued"] as? Bool ?? false)
     }
 
     static func apply(_ c: StreakCore, to snap: inout [String: Any]) {
@@ -118,6 +121,7 @@ extension StreakRollover {
         snap["workoutsThisWeek"] = c.workoutsThisWeek
         snap["weekHit"] = c.weekHit
         snap["stale"] = c.stale
+        snap["weekRescued"] = c.weekRescued
     }
 
     /// Move a snapshot written on an earlier day onto `today`.
@@ -135,7 +139,7 @@ extension StreakRollover {
     static func repairConsistency(_ snap: inout [String: Any], today: String) -> Bool {
         guard snap["date"] as? String == today else { return false }
         var c = core(from: snap)
-        let hit = c.stepsToday >= c.goal
+        let hit = c.stepsToday >= c.goal || c.weekRescued
         let streak = c.streakBase + (hit ? 1 : 0)
         if c.todayHit == hit, c.streak == streak, snap["streakBase"] != nil { return false }
         c.todayHit = hit
