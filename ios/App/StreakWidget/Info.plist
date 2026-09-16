@@ -25,5 +25,7 @@
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.widgetkit-extension</string>
 	</dict>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Workout Tracker reads your step count to show your goal and streak.</string>
 </dict>
 </plist>

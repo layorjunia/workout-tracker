@@ -122,11 +122,10 @@
 
 
   async function collectMetrics() {
-    const [restingHR, hrv, spo2, steps, kcal, kg, fat, sleep] = await Promise.all([
+    const [restingHR, hrv, spo2, kcal, kg, fat, sleep] = await Promise.all([
       latest("restingHeartRate", 2 * DAY),
       latest("heartRateVariability", 2 * DAY),
       latest("oxygenSaturation", 2 * DAY),
-      sumToday("steps"),
       sumToday("calories"),
       latest("weight", 60 * DAY),
       latest("bodyFat", 60 * DAY),
@@ -137,7 +136,6 @@
     if (restingHR != null) out.restingHR         = Math.round(restingHR);
     if (hrv       != null) out.hrv               = Math.round(hrv);
     if (spo2      != null) out.bloodOxygen       = Math.round(spo2 * 100);      // HK percent = 0..1
-    if (steps     != null) out.stepsToday        = Math.round(steps);
     if (kcal      != null) out.activeEnergyToday = Math.round(kcal);
     if (kg        != null) out.weightLbs         = r1(kg * 2.2046226218);       // kg → lb
     if (fat       != null) out.bodyFatPct        = r1(fat * 100);               // fraction → %
@@ -189,7 +187,6 @@
     };
 
     onProgress?.("steps & calories");
-    for (const s of await agg("steps", "sum")) if (s.value > 0) put(localDate(s.startDate), "stepsToday", Math.round(s.value));
     for (const s of await agg("calories", "sum")) if (s.value > 0) put(localDate(s.startDate), "activeEnergyToday", Math.round(s.value));
 
     onProgress?.("heart metrics");
@@ -319,56 +316,6 @@
     return Object.keys(map).length;
   }
 
-  // Days the app wasn't opened are missing from local history, which made the
-  // streak look broken even though HealthKit had the steps all along. Pull the
-  // last week of daily totals on every sync so the streak is computed from the
-  // full picture.
-  async function backfillRecentSteps(days = 8) {
-    const h = health();
-    if (!h) return 0;
-    const end = new Date();
-    const start = new Date(); start.setDate(start.getDate() - days); start.setHours(0, 0, 0, 0);
-    try {
-      const { samples } = await h.queryAggregated({
-        dataType: "steps", startDate: start.toISOString(), endDate: end.toISOString(),
-        bucket: "day", aggregation: "sum",
-      });
-      const map = {};
-      for (const s of samples || []) {
-        const v = Number(s.value) || 0;
-        if (v > 0) (map[localDate(s.startDate)] ||= {}).stepsToday = Math.round(v);
-      }
-      // Days lived in another time zone are re-read on that zone's own midnight.
-      if (typeof tzStartOfDay === "function" && typeof todayISO === "function") {
-        const here = currentTZ();
-        const today = todayISO();
-        const recent = Array.from({ length: days }, (_, i) => addDaysISO(today, -(i + 1)));
-        const stamped = window.__getDailyTZ?.(recent) || {};
-        for (const [date, tz] of Object.entries(stamped)) {
-          if (!tz || tz === here) continue;
-          try {
-            const { samples: own } = await h.queryAggregated({
-              dataType: "steps",
-              startDate: tzStartOfDay(date, tz).toISOString(),
-              endDate: tzStartOfDay(addDaysISO(date, 1), tz).toISOString(),
-              bucket: "day", aggregation: "sum",
-            });
-            const total = Math.round((own || []).reduce((acc, s) => acc + (Number(s.value) || 0), 0));
-            if (total > 0) {
-              const rec = (map[date] ||= {});
-              rec.stepsToday = Math.max(rec.stepsToday || 0, total);
-            }
-          } catch (e) { console.warn("[health] zone re-read", date, e?.message || e); }
-        }
-      }
-      if (Object.keys(map).length) window.__applyStepHistory?.(map);
-      return Object.keys(map).length;
-    } catch (e) {
-      console.warn("[health] step history:", e?.message || e);
-      return 0;
-    }
-  }
-
   async function syncNow() {
     if (syncing) return;
     syncing = true;
@@ -381,7 +328,6 @@
         window.__applyNativeHealth?.(metrics);
         console.log("[health] applied", Object.keys(metrics).join(", "));
       }
-      await backfillRecentSteps(8).catch(() => {});
       // Nutrition rides along once the user has connected it (no prompt otherwise)
       if (localStorage.getItem(NUT_AUTH_KEY) === "1") {
         await syncNutrition(7).catch(e => console.warn("[nutrition] sync failed:", e?.message || e));
@@ -400,7 +346,7 @@
     if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
   }
 
-  window.WorkoutNativeHealth = { isNative: true, syncNow, start, stop, enrichWorkout, syncNutrition, backfillHistory, backfillRecentSteps, authorized: () => localStorage.getItem(AUTH_KEY) === "1" };
+  window.WorkoutNativeHealth = { isNative: true, syncNow, start, stop, enrichWorkout, syncNutrition, backfillHistory, authorized: () => localStorage.getItem(AUTH_KEY) === "1" };
 
   // Re-sync when the app returns to the foreground (after permission granted once).
   document.addEventListener("visibilitychange", () => {

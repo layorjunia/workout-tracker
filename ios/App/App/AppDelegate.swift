@@ -1,9 +1,6 @@
 import UIKit
 import Capacitor
 import BackgroundTasks
-import HealthKit
-import UserNotifications
-import WidgetKit
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -12,8 +9,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     static let stepCheckTaskId = "com.layorjunia.workouttracker.stepcheck"
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Background step check: re-reads HealthKit and updates/cancels the
-        // step-goal notification even when the app hasn't been opened.
         BGTaskScheduler.shared.register(forTaskWithIdentifier: Self.stepCheckTaskId, using: nil) { task in
             Self.runStepCheck(task: task as? BGAppRefreshTask)
         }
@@ -22,79 +17,20 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     static func scheduleStepCheck() {
         let request = BGAppRefreshTaskRequest(identifier: stepCheckTaskId)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 2 * 60 * 60)   // ~every 2 h, at iOS's discretion
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 30 * 60)
         try? BGTaskScheduler.shared.submit(request)
     }
 
-    /// Reads today's steps straight from HealthKit (authorized via the main app),
-    /// refreshes the widget snapshot, and re-arms or cancels the reminder.
+    /// Reads HealthKit through the same path the widget uses, then re-arms the
+    /// reminder and refreshes the widget if what it shows changed.
     static func runStepCheck(task: BGAppRefreshTask?) {
-        scheduleStepCheck()   // always keep the chain alive
-        let defaults = UserDefaults(suiteName: StreakBridgePlugin.appGroup)
-        // Bootstrap: if the web layer hasn't written a snapshot yet, build one
-        // with defaults so the widget always has real step data to show.
-        let existing = StreakBridgePlugin.readSnapshot(defaults)
-        var snap: [String: Any] = existing ?? [
-            "goal": 10000, "streak": 0, "todayHit": false, "last7": [],
-            "reminderEnabled": false, "reminderHour": 19, "calibration": 1.0,
-            "workoutsThisWeek": 0, "workoutGoal": 3, "weekHit": false]
-
-        let goal = snap["goal"] as? Int ?? 10000
-        let day = StreakBridgePlugin.localDay()
-
-        // Bring the snapshot onto today BEFORE anything reads it, then force
-        // hit/streak to agree with the stored step count. Both rules live in
-        // StreakRollover (covered by ios/tests/RolloverTests.swift) so the app
-        // and the widget can't drift apart. Neither step needs HealthKit, so a
-        // slow or unauthorized query can't leave yesterday on screen.
-        var changed = StreakRollover.rollSnapshot(&snap, to: day)
-        if StreakRollover.repairConsistency(&snap, today: day) { changed = true }
-        if changed {
-            snap["updatedAt"] = Date().timeIntervalSince1970
-            StreakBridgePlugin.writeSnapshot(snap, to: defaults)
-            StreakBridgePlugin.maybeReloadWidgets(old: existing, new: snap, defaults: defaults, foreground: task == nil)
+        scheduleStepCheck()
+        let finish = TaskFinisher(task)
+        task?.expirationHandler = { finish.done(false) }
+        StepStore.refresh(source: task == nil ? "app-open" : "background") { summary, _ in
+            StreakBridgePlugin.afterRefresh(summary)
+            finish.done(true)
         }
-
-        let store = HKHealthStore()
-        guard HKHealthStore.isHealthDataAvailable(),
-              let stepType = HKObjectType.quantityType(forIdentifier: .stepCount)
-        else { task?.setTaskCompleted(success: true); return }
-
-        let start = Calendar.current.startOfDay(for: Date())
-        let predicate = HKQuery.predicateForSamples(withStart: start, end: Date())
-        let calibration = snap["calibration"] as? Double ?? 1.0
-        let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, stats, _ in
-            let rawCount = Int(stats?.sumQuantity()?.doubleValue(for: .count()) ?? 0)
-            var steps = Int(Double(rawCount) * calibration)
-            // A day\'s step count never goes back down, whatever Health reports later.
-            if snap["date"] as? String == day, let exSteps = snap["stepsToday"] as? Int {
-                steps = max(steps, exSteps)
-            }
-            if rawCount > 0 {
-                var peaks = defaults?.dictionary(forKey: "stepPeaks") as? [String: Int] ?? [:]
-                StreakRollover.recordPeak(&peaks, day: day, raw: rawCount)
-                defaults?.set(peaks, forKey: "stepPeaks")
-            }
-            // hit/streak always follow the final step count — same shared rule
-            // the plugin and widget use, so the writers can never disagree.
-            snap["date"] = day
-            snap["stepsToday"] = steps
-            StreakRollover.repairConsistency(&snap, today: day)
-            let hit = snap["todayHit"] as? Bool ?? false
-            snap["updatedAt"] = Date().timeIntervalSince1970
-            StreakBridgePlugin.writeSnapshot(snap, to: defaults)
-            StreakBridgePlugin.maybeReloadWidgets(old: existing, new: snap, defaults: defaults, foreground: task == nil)
-            StreakBridgePlugin.rescheduleReminder(
-                enabled: snap["reminderEnabled"] as? Bool ?? false,
-                hour: snap["reminderHour"] as? Int ?? 19,
-                todayHit: hit,
-                stepsToday: steps,
-                goal: goal,
-                streak: snap["streak"] as? Int ?? 0
-            )
-            task?.setTaskCompleted(success: true)
-        }
-        store.execute(query)
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
@@ -107,8 +43,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        // Self-heal the widget snapshot from HealthKit on every open, so the
-        // widget never shows stale numbers even if the web layer hasn't synced.
         Self.runStepCheck(task: nil)
     }
 
@@ -135,4 +69,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 
+}
+
+private final class TaskFinisher {
+    private let task: BGAppRefreshTask?
+    private var finished = false
+    private let lock = NSLock()
+    init(_ task: BGAppRefreshTask?) { self.task = task }
+    func done(_ success: Bool) {
+        lock.lock(); defer { lock.unlock() }
+        guard !finished else { return }
+        finished = true
+        task?.setTaskCompleted(success: success)
+    }
 }
