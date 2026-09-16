@@ -138,23 +138,24 @@ enum StepEngine {
                                last14: [], computedAt: computedAt)
         }
 
-        // Weekly pace: finished days owe their quota; today owes one more.
-        var weekTotals: [String: Int] = [:]
-        var weekOf: [String] = []
-        weekOf.reserveCapacity(days.count)
-        for d in days {
-            let ws = weekStart(d.date, cal) ?? d.date
-            weekOf.append(ws)
-            weekTotals[ws, default: 0] += d.steps
-        }
-        for i in days.indices where !days[i].hit && days[i].hasData {
-            let ws = weekOf[i]
-            let finished = min(max(daysBetween(ws, today, cal) ?? 0, 0), 7)
-            let total = weekTotals[ws] ?? 0
-            let covered = days[i].date == today
-                ? total >= goal * (finished + 1)
-                : finished > 0 && total >= goal * finished
-            if covered { days[i].rescued = true; days[i].counts = true }
+        // Weekly buffer: a day under the goal still counts while the week is less
+        // than one day's goal behind pace at the end of that day. Each day is judged
+        // on its own end-of-day total, so a break stays broken even if later days
+        // catch the week up. Today is judged as if it ended now.
+        var runningWeek = ""
+        var runningTotal = 0
+        var weekTotal = 0
+        var weekTarget = goal
+        for idx in days.indices {
+            let ws = weekStart(days[idx].date, cal) ?? days[idx].date
+            if ws != runningWeek { runningWeek = ws; runningTotal = 0 }
+            runningTotal += days[idx].steps
+            let dayNumber = (daysBetween(ws, days[idx].date, cal) ?? 0) + 1   // Mon 1 … Sun 7
+            if !days[idx].hit && goal * dayNumber - runningTotal < goal {
+                days[idx].rescued = true
+                days[idx].counts = true
+            }
+            if idx == todayIndex { weekTotal = runningTotal; weekTarget = goal * dayNumber }
         }
 
         var base = 0
@@ -162,10 +163,7 @@ enum StepEngine {
         while i >= 0 && days[i].counts { base += 1; i -= 1 }
 
         let now = days[todayIndex]
-        let ws = weekOf[todayIndex]
-        let finished = min(max(daysBetween(ws, today, cal) ?? 0, 0), 7)
-        let weekTotal = weekTotals[ws] ?? 0
-        let weekTarget = goal * (finished + 1)
+        let ws = weekStart(today, cal) ?? today
 
         return StepSummary(
             date: today, todayRaw: max(now.raw, now.peak), todaySteps: now.steps, goal: goal,

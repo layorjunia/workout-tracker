@@ -485,37 +485,20 @@ function streakInfo(today = todayISO()) {
     days.push({ date: iso, steps, hit: steps != null && steps >= goal, known: steps != null });
   }
 
-  // Weekly rescue: a day under the daily goal still keeps the streak when its
-  // week is running at goal pace — 70k over a full week at a 10k goal. Weeks in
-  // progress are measured against the days that have finished.
-  const weekTotals = new Map();
-  for (const d of days) {
-    const k = weekStartOf(d.date);
-    weekTotals.set(k, (weekTotals.get(k) || 0) + (d.steps || 0));
-  }
-  const todayD = new Date(today + "T00:00:00");
-  const weekMeta = new Map();
-  for (const [k, total] of weekTotals) {
-    const mon = new Date(k + "T00:00:00");
-    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
-    const complete = sun < todayD;
-    // Only finished days owe their quota. Charging today's quota from 12:01am
-    // put the week a full day behind overnight and dropped days it had covered.
-    const daysDone = complete ? 7 : Math.max(0, Math.round((todayD - mon) / 86400000));
-    const need = goal * daysDone;
-    const needWithToday = complete ? need : need + goal;
-    weekMeta.set(k, { total, daysDone, need, needWithToday, complete,
-                      ok: daysDone > 0 && total >= need,
-                      okWithToday: total >= needWithToday });
-  }
-  days.forEach(d => {
-    const m = weekMeta.get(weekStartOf(d.date));
-    // Finished days: covered when the week is at pace through its finished days.
-    // Today: only when the week would still be at pace if today ended now.
-    const covered = d.date === today ? !!m?.okWithToday : !!m?.ok;
-    d.rescued = !d.hit && covered && d.known;
+  // Weekly buffer: a day under the goal still counts while the week is less than
+  // one day's goal behind pace at the end of that day. Each day is judged on its
+  // own end-of-day total, so a break stays broken; today is judged as if it ended now.
+  let runWeek = null, runTotal = 0, weekTotal = 0, weekTarget = goal;
+  for (let i = days.length - 1; i >= 0; i--) {
+    const d = days[i];
+    const ws = weekStartOf(d.date);
+    if (ws !== runWeek) { runWeek = ws; runTotal = 0; }
+    runTotal += d.steps || 0;
+    const dayNumber = Math.round((new Date(d.date + "T00:00:00") - new Date(ws + "T00:00:00")) / 86400000) + 1;
+    d.rescued = !d.hit && goal * dayNumber - runTotal < goal;
     d.counts = d.hit || d.rescued;
-  });
+    if (i === 0) { weekTotal = runTotal; weekTarget = goal * dayNumber; }
+  }
 
   let streak = 0;
   for (let i = 1; i < days.length; i++) {         // start yesterday
@@ -528,11 +511,11 @@ function streakInfo(today = todayISO()) {
   const last14 = days.slice(0, 14).reverse();
   const wk = workoutsThisWeek();
   const wkGoal = state.settings.workoutGoalPerWeek || 4;
-  const thisWeek = weekMeta.get(weekStartOf(today)) || { total: 0, need: 0, needWithToday: goal, ok: false, okWithToday: false };
+  const thisWeek = { total: weekTotal, needWithToday: weekTarget };
   return { goal, streak, streakBase, todayHit, todayGoalMet: days[0].hit,
            todaySteps: todaySteps ?? 0, last14, pct: Math.min(1, (todaySteps || 0) / goal),
            workouts: wk, workoutGoal: wkGoal, weekHit: wk >= wkGoal,
-           week: thisWeek, weekRescued: !!thisWeek.okWithToday, weekFullGoal: goal * 7 };
+           week: thisWeek, weekRescued: !!days[0].rescued, weekFullGoal: goal * 7 };
 }
 
 // ── Steps (iPhone) ──
@@ -543,6 +526,7 @@ const stepBridge = () => (window.Capacitor?.isNativePlatform?.() && window.Capac
 let nativeSteps = null;
 let stepsInFlight = null;
 let stepsTimer = null;
+let selectedStepDay = null;
 
 function qualifyingWorkoutDates() {
   const from = addDaysISO(todayISO(), -21);
@@ -2508,7 +2492,7 @@ function stepView() {
       today: s.date, goal: s.goal, todaySteps: s.todaySteps, goalMet: s.goalMet, todayCounts: s.todayCounts,
       streak: s.streak, workouts: s.workoutsThisWeek, workoutGoal: s.workoutGoal,
       weekTotal: s.weekTotal, weekTarget: s.weekTarget,
-      last14: (s.last14 || []).map(d => ({ date: d.date, hit: d.hit, rescued: d.rescued, hasData: d.hasData })),
+      last14: (s.last14 || []).map(d => ({ date: d.date, steps: d.steps, hit: d.hit, rescued: d.rescued, hasData: d.hasData })),
     };
   }
   const w = streakInfo();
@@ -2516,7 +2500,7 @@ function stepView() {
     today: todayISO(), goal: w.goal, todaySteps: w.todaySteps ?? 0, goalMet: w.todayGoalMet, todayCounts: w.todayHit,
     streak: w.streak, workouts: w.workouts, workoutGoal: w.workoutGoal,
     weekTotal: Math.round(w.week.total), weekTarget: w.week.needWithToday,
-    last14: w.last14.map(d => ({ date: d.date, hit: d.hit, rescued: d.rescued, hasData: d.known })),
+    last14: w.last14.map(d => ({ date: d.date, steps: d.steps, hit: d.hit, rescued: d.rescued, hasData: d.known })),
   };
 }
 
@@ -2538,11 +2522,12 @@ function renderSteps() {
   const nextLine = toNext && toNext < 7 ? `<div class="muted small">${toNext} day${toNext > 1 ? "s" : ""} to ${nextTier.emoji} ${nextTier.label}</div>` : "";
   const R = 30, C = 2 * Math.PI * R;
   const ringOff = C * (1 - Math.min(1, v.todaySteps / Math.max(1, v.goal)));
+  if (selectedStepDay && !v.last14.some(d => d.date === selectedStepDay)) selectedStepDay = null;
   const dots = v.last14.map(d => {
     const isToday = d.date === v.today;
     const cls = d.hit ? "hit" : d.rescued ? "rescued" : (d.hasData && !isToday) ? "miss" : "unknown";
     const dow = "SMTWTFS"[new Date(d.date + "T00:00:00").getDay()];
-    return `<div class="streak-dot ${cls}${isToday ? " today" : ""}"><i></i><span>${dow}</span></div>`;
+    return `<button type="button" class="streak-dot ${cls}${isToday ? " today" : ""}${d.date === selectedStepDay ? " selected" : ""}" data-date="${d.date}" aria-label="${prettyDate(d.date)}"><i></i><span>${dow}</span></button>`;
   }).join("");
   const weekHit = v.workouts >= v.workoutGoal;
   const stepsWeekHit = v.weekTotal >= v.weekTarget;
@@ -2560,6 +2545,7 @@ function renderSteps() {
       </div>
     </div>
     <div class="streak-days">${dots}</div>
+    ${selectedStepDay ? stepDayDetail(v, selectedStepDay) : ""}
     <div class="wk-goal${weekHit ? " hit" : ""}">
       <span>🏋️ Workouts this week</span>
       <div class="wk-bar"><i style="width:${Math.min(100, (v.workouts / Math.max(1, v.workoutGoal)) * 100).toFixed(0)}%"></i></div>
@@ -2570,6 +2556,47 @@ function renderSteps() {
       <div class="wk-bar"><i style="width:${Math.min(100, (v.weekTotal / Math.max(1, v.weekTarget)) * 100).toFixed(0)}%"></i></div>
       <strong>${fmt(v.weekTotal)}/${fmt(v.weekTarget)}${stepsWeekHit ? " ✓" : ""}</strong>
     </div>`;
+  host.onclick = (e) => {
+    const dot = e.target.closest("[data-date]");
+    if (dot) {
+      selectedStepDay = selectedStepDay === dot.dataset.date ? null : dot.dataset.date;
+      renderSteps();
+      return;
+    }
+    const w = e.target.closest("[data-workout]");
+    if (w) {
+      activeWorkoutId = w.dataset.workout;
+      resetInactivityTimer();
+      showView("today");
+    }
+  };
+}
+
+function stepDayDetail(v, date) {
+  const d = v.last14.find(x => x.date === date);
+  if (!d) return "";
+  const isToday = date === v.today;
+  const status = d.hit ? "Goal met" : d.rescued ? "Kept by week" : isToday ? "In progress" : d.hasData ? "Missed" : "No data";
+  const tone = d.hit || d.rescued ? "good" : isToday ? "" : "bad";
+  const sessions = state.workouts
+    .filter(w => w.date === date && w.id !== activeWorkoutId && w.entries?.some(e => e.sets?.some(setHasData)))
+    .sort((x, y) => (x.startTime || "").localeCompare(y.startTime || ""));
+  const workouts = sessions.map(w => {
+    const time = w.startTime && w.endTime ? `${w.startTime}–${w.endTime}` : (w.startTime || "");
+    const rows = w.entries.filter(e => e.sets?.some(setHasData)).map(e => {
+      const ex = state.exercises.find(x => x.id === e.exerciseId);
+      return `<div class="sd-row"><span>${escapeHtml(ex?.name || "Exercise")}</span><span class="muted">${escapeHtml(setsSummary(exerciseType(ex), e.sets, w.date))}</span></div>`;
+    }).join("");
+    return `<button type="button" class="sd-workout" data-workout="${w.id}">
+      <div class="sd-wtitle"><strong>${escapeHtml(w.day || "Workout")}</strong><span class="muted small">${escapeHtml(time)}</span></div>
+      ${rows}
+    </button>`;
+  }).join("");
+  return `<div class="step-day">
+    <div class="sd-head"><strong>${prettyDate(date)}</strong><span class="sd-status ${tone}">${status}</span></div>
+    <div class="sd-steps"><strong>${fmt(d.steps || 0)}</strong> <span class="muted small">steps</span></div>
+    ${workouts || `<div class="muted small">No workouts</div>`}
+  </div>`;
 }
 
 let chartBodyweight;

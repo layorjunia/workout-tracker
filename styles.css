@@ -589,13 +589,24 @@ details.setup .setup-list { margin-top: 8px; }
 @keyframes milestonePop { 0% { transform: scale(0.6); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
 
 .streak-days { display: grid; grid-template-columns: repeat(14, 1fr); gap: 4px; margin-top: 14px; }
-.streak-dot { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.streak-dot { display: flex; flex-direction: column; align-items: center; gap: 3px; background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .streak-dot i { width: 100%; aspect-ratio: 1; max-width: 20px; border-radius: 6px; background: var(--bg-elev-3); }
 .streak-dot.hit i { background: var(--success); }
 .streak-dot.miss i { background: var(--danger-soft); }
 .streak-dot.rescued i { background: transparent; box-shadow: inset 0 0 0 2px var(--success); }
 .streak-dot.today i { outline: 2px solid var(--accent); outline-offset: 1px; }
 .streak-dot span { font-size: 8.5px; color: var(--text-faint); font-weight: 700; }
+.streak-dot.selected i { outline: 2px solid var(--text); outline-offset: 1px; }
+.step-day { margin-top: 12px; padding: 12px; border-radius: var(--r); background: var(--bg-elev-2); border: 1px solid var(--border); }
+.sd-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.sd-status { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--bg-elev-3); color: var(--text-dim); white-space: nowrap; }
+.sd-status.good { background: var(--success-soft); color: var(--success); }
+.sd-status.bad { background: var(--danger-soft); color: var(--danger); }
+.sd-steps { margin: 6px 0 4px; font-size: 20px; }
+.sd-workout { display: block; width: 100%; text-align: left; background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 10px; margin-top: 8px; color: inherit; font: inherit; cursor: pointer; }
+.sd-wtitle { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.sd-row { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 2px 0; }
+.sd-row span:last-child { text-align: right; }
 
 .wk-goal { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 13.5px; }
 .wk-goal span { flex: 0 0 auto; color: var(--text-dim); font-weight: 600; }

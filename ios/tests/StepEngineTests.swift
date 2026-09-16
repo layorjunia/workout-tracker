@@ -61,17 +61,35 @@ check("Thursday night: today covered", thuNight.todayCounts, true)
 check("Thursday night streak", thuNight.streak, 11)
 check("Friday morning: Thursday still covered", day(friMorning, "2026-09-10")?.counts, Optional(true))
 check("Friday morning: streak intact", friMorning.streakBase, 11)
-check("Friday morning: today pending", friMorning.todayCounts, false)
+check("Friday morning: today already safe (8,567 behind)", friMorning.todayCounts, true)
 
-print("\n7) a real miss breaks the streak; a big day can restore the week")
-let s7 = StepEngine.compute(today: "2026-09-16", counts: ["2026-09-14": 8000, "2026-09-15": 3000, "2026-09-16": 1000],
-                            peaks: [:], settings: jacob, computedAt: 0, denver)
-check("Tuesday not covered", day(s7, "2026-09-15")?.counts, Optional(false))
-check("streak broken", s7.streak, 0)
-let s7b = StepEngine.compute(today: "2026-09-16", counts: ["2026-09-14": 8000, "2026-09-15": 3000, "2026-09-16": 12000],
-                             peaks: [:], settings: jacob, computedAt: 0, denver)
-check("Tuesday covered once the week is at pace", day(s7b, "2026-09-15")?.rescued, Optional(true))
-check("streak 3", s7b.streak, 3)
+print("\n7) weekly buffer — less than one day behind keeps the streak (Sep 14 = Monday)")
+let flat = StepSettings(goal: 10000)
+func wed(_ mon: Int, _ tue: Int, _ wedSoFar: Int) -> StepSummary {
+    StepEngine.compute(today: "2026-09-16", counts: ["2026-09-14": mon, "2026-09-15": tue, "2026-09-16": wedSoFar],
+                       peaks: [:], settings: flat, computedAt: 0, denver)
+}
+check("day three at exactly 10,000 → Tuesday breaks", day(wed(10000, 0, 0), "2026-09-15")?.counts, Optional(false))
+check("…streak shows 0", wed(10000, 0, 0).streak, 0)
+check("day three at 10,001 → Tuesday kept", day(wed(10000, 1, 0), "2026-09-15")?.rescued, Optional(true))
+check("…streak keeps going", wed(10000, 1, 0).streakBase, 2)
+check("5,000 + 5,000 → Tuesday breaks", day(wed(5000, 5000, 0), "2026-09-15")?.counts, Optional(false))
+check("5,000 + 5,001 → both days kept", wed(5000, 5001, 0).streakBase, 2)
+check("today safe once the week is under a day behind", wed(10000, 10000, 1).todayCounts, true)
+check("today not safe at exactly a day behind", wed(10000, 10000, 0).todayCounts, false)
+let comeback = wed(0, 30000, 0)
+check("a break is final: Monday stays broken after a 30,000 Tuesday", day(comeback, "2026-09-14")?.counts, Optional(false))
+check("…streak restarts from Tuesday", comeback.streakBase, 1)
+check("…and today is safe (week is ahead)", comeback.streak, 2)
+var edge: [String: Int] = [:]
+for d in ["2026-09-07","2026-09-08","2026-09-09","2026-09-10","2026-09-11","2026-09-12"] { edge[d] = 10000 }
+edge["2026-09-13"] = 1          // Sunday ends 9,999 behind the week
+edge["2026-09-14"] = 1          // Monday starts a fresh week, 9,999 behind
+edge["2026-09-15"] = 20000      // today
+let edgeS = StepEngine.compute(today: "2026-09-15", counts: edge, peaks: [:], settings: flat, computedAt: 0, denver)
+check("Sunday 9,999 behind → kept", day(edgeS, "2026-09-13")?.rescued, Optional(true))
+check("new week starts fresh → Monday kept", day(edgeS, "2026-09-14")?.rescued, Optional(true))
+check("streak runs across the week boundary", edgeS.streak, 9)
 
 print("\n8) carrying a summary forward without a read (phone locked)")
 let base8 = StepEngine.compute(today: "2026-09-15", counts: ["2026-09-14": 8000, "2026-09-15": 8077],
