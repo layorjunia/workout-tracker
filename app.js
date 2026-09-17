@@ -83,7 +83,7 @@ function exerciseType(ex) { return EXERCISE_TYPES[ex?.type] ? ex.type : "strengt
 function blankSet(type) {
   switch (type) {
     case "cardio":     return { duration: "", distance: "", avgHR: "" };
-    case "timed":      return { seconds: "" };
+    case "timed":      return { seconds: "", load: "" };      // load = added weight, optional
     case "bodyweight": return { reps: "", load: "" };   // load = added weight (belt/vest), optional
     default:           return { load: "", reps: "" };
   }
@@ -1468,13 +1468,13 @@ function renderEntry(entry, idx) {
 const SET_COLUMNS = {
   strength:   () => [{ key: "load", label: state.settings.units, step: "0.5", mode: "decimal" }, { key: "reps", label: "Reps", step: "1", mode: "numeric" }],
   bodyweight: () => [{ key: "reps", label: "Reps", step: "1", mode: "numeric" }, { key: "load", label: `+${state.settings.units}`, step: "2.5", mode: "decimal", placeholder: "+0" }],
-  timed:      () => [{ key: "seconds", label: "Sec", step: "1", mode: "numeric" }],
+  timed:      () => [{ key: "seconds", label: "Sec", step: "1", mode: "numeric" }, { key: "load", label: `+${state.settings.units}`, step: "2.5", mode: "decimal", placeholder: "+0" }],
 };
 function prevLabel(type, s) {
   if (!s || !setHasData(s)) return "—";
   if (type === "strength")   return `${parseNum(s.load)}×${parseNum(s.reps)}`;
   if (type === "bodyweight") return `${parseNum(s.reps)}${parseNum(s.load) ? `+${parseNum(s.load)}` : ""}`;
-  if (type === "timed")      return `${parseNum(s.seconds)}s`;
+  if (type === "timed")      return `${parseNum(s.seconds)}s${parseNum(s.load) ? `+${parseNum(s.load)}` : ""}`;
   return "—";
 }
 
@@ -1658,7 +1658,8 @@ function updateEntryStats(div, entry, prevSets, type = "strength") {
   if (type === "timed") {
     const cur = entry.sets.reduce((a, s) => a + parseNum(s.seconds), 0);
     const prev = prevSets.reduce((a, s) => a + parseNum(s.seconds), 0);
-    div.querySelector(".stat-total").textContent = `${fmt(cur)}s`;
+    const topAdded = Math.max(0, ...entry.sets.map(s => parseNum(s.load)));
+    div.querySelector(".stat-total").textContent = `${fmt(cur)}s` + (topAdded ? ` · +${topAdded}` : "");
     showDelta(cur, prev, "s"); return;
   }
   let vol = 0, best1rm = 0;
@@ -1743,7 +1744,7 @@ function setsSummary(type, sets, date) {
       if (logged.length > 1) bits.push(`${logged.length} intervals`);
       return bits.join(" · ");
     }
-    case "timed":      return logged.map(s => `${parseNum(s.seconds)}s`).join("  ·  ");
+    case "timed":      return logged.map(s => `${parseNum(s.seconds)}s${parseNum(s.load) ? ` +${parseNum(s.load)}` : ""}`).join("  ·  ");
     case "bodyweight": {
       const bw = date ? bodyweightOn(date) : null;
       return logged.map(s => `${parseNum(s.reps)}${parseNum(s.load) ? `+${parseNum(s.load)}` : ""}`).join("  ·  ") + " reps" + (bw ? ` @ BW ${fmt(bw.lbs, 0)}` : "");
@@ -1990,6 +1991,8 @@ function prLabel(p) {
       return `rep PR ${p.value}×${p.load} ${u}`;
     case "volume": return `volume PR ${fmt(p.value)}`;
     case "seconds": return `${p.value}s PR`;
+    case "hold": return `${p.value}s hold at +${p.load} ${u}`;
+    case "holdLoad": return `heaviest hold +${p.value} ${u}`;
     case "distance": return `${p.value.toFixed(1)} mi PR`;
     case "pace": { const m = Math.floor(p.value), s = Math.round((p.value - m) * 60); return `pace PR ${m}:${String(s).padStart(2,"0")}/mi`; }
     default: return `${p.kind} PR`;
@@ -2147,8 +2150,12 @@ function renderExerciseCharts(exId) {
       card("Rel. strength", cur.relStrength ? `${cur.relStrength.toFixed(2)}× BW` : "—", prev && prev.relStrength ? cur.relStrength - prev.relStrength : null, "×"),
     ].join("");
   } else {
-    const k = type === "timed" ? "seconds" : "reps";
-    metrics.innerHTML = [card(type === "timed" ? "Total seconds" : "Total reps", cur[k], prev ? cur[k] - prev[k] : null), card("Best set", cur.bestSet, prev ? cur.bestSet - prev.bestSet : null), card("Sets", cur.sets, null)].join("");
+    const sameLoad = prev && cur.topLoad === (prev.topLoad || 0);
+    metrics.innerHTML = [
+      card("Best hold", `${cur.bestSet}s`, prev ? cur.bestSet - prev.bestSet : null, "s"),
+      card("Top set", `${cur.secsAtTop}s${cur.topLoad ? ` +${cur.topLoad}` : ""}`, prev ? (sameLoad ? cur.secsAtTop - (prev.secsAtTop || 0) : cur.topLoad - (prev.topLoad || 0)) : null, sameLoad ? "s" : ` ${u}`),
+      card("Total seconds", cur.seconds, prev ? cur.seconds - prev.seconds : null),
+    ].join("");
   }
 
   // Charts (strength + bodyweight — weekly best e1RM and volume; bodyweight uses BW + added)
@@ -2165,7 +2172,7 @@ function renderExerciseCharts(exId) {
   if (table) {
     const line = (h) => type === "strength" ? `${h.topLoad}×${h.repsAtTop} · e1RM ${Math.round(h.e1rm)} · vol ${fmt(h.volume)}`
       : type === "cardio" ? `${fmt(h.duration)} min · ${h.distance.toFixed(1)} mi${h.avgHR ? ` · ${Math.round(h.avgHR)} bpm` : ""}`
-      : type === "timed" ? `${h.seconds}s total · best ${h.bestSet}s`
+      : type === "timed" ? `${h.seconds}s total · best ${h.bestSet}s${h.topLoad ? ` · ${h.secsAtTop}s +${h.topLoad}` : ""}`
       : `${h.reps} reps${h.topLoad ? ` · +${h.topLoad}` : ""} @ BW ${fmt(h.bw || 0)}${h.effE1rm ? ` · e1RM ${fmt(h.effE1rm)}` : ""}`;
     table.innerHTML = `<div class="health-group-title" style="margin-top:14px">Last ${hist.length} sessions</div>` + hist.map(h => `
       <div class="sess-row"><div><div class="sess-date">${prettyDate(h.date)} <span class="muted">· ${escapeHtml(h.day || "")}</span></div><div class="sess-line">${line(h)}</div></div>
@@ -2289,10 +2296,10 @@ function openExerciseEditor(id, afterSave) {
     ex.name = name;
     const newType = EXERCISE_TYPES[typeInp.value] ? typeInp.value : "strength";
     const oldType = exerciseType(ex);
-    if (!isNew && oldType === "strength" && newType === "bodyweight") {
+    if (!isNew && oldType === "strength" && (newType === "bodyweight" || newType === "timed")) {
       // Logged weights were probably body weight on a machine, not added load — offer to clear them.
       const affected = state.workouts.filter(w => w.entries.some(e => e.exerciseId === ex.id && e.sets.some(s => parseNum(s.load) > 0)));
-      if (affected.length && !confirm(`${affected.length} past session${affected.length > 1 ? "s" : ""} logged a weight for ${ex.name}.\n\nOK = keep those numbers as ADDED weight (belt/vest).\nCancel = clear them (they were body weight / machine weight).`)) {
+      if (affected.length && !confirm(`${affected.length} past session${affected.length > 1 ? "s" : ""} logged a weight for ${ex.name}.\n\n${newType === "timed" ? "OK = keep those numbers as added weight.\nCancel = clear them." : "OK = keep those numbers as ADDED weight (belt/vest).\nCancel = clear them (they were body weight / machine weight)."}`)) {
         affected.forEach(w => { w.entries.forEach(e => { if (e.exerciseId === ex.id) e.sets.forEach(s => { s.load = ""; }); }); w.updatedAt = Date.now(); });
       }
     }

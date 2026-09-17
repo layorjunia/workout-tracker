@@ -56,8 +56,15 @@ const Analytics = (() => {
       s.bw = bw; s.effE1rm = effE1rm; s.effVolume = effVolume;
       s.relStrength = bw > 0 ? (bw + topLoad) / bw : null;
     } else if (type === "timed") {
+      // Added weight is optional; "top set" = heaviest added load, then the longest hold at it.
+      let topLoad = 0, secsAtTop = 0;
+      for (const st of sets) {
+        const L = parseNum(st.load), S = parseNum(st.seconds);
+        if (L > topLoad || (L === topLoad && S > secsAtTop)) { topLoad = L; secsAtTop = S; }
+      }
       s.seconds = sets.reduce((a, st) => a + parseNum(st.seconds), 0);
       s.bestSet = Math.max(0, ...sets.map(st => parseNum(st.seconds)));
+      s.topLoad = topLoad; s.secsAtTop = secsAtTop;
     } else {
       const dur = sets.reduce((a, st) => a + parseNum(st.duration), 0);
       const dist = sets.reduce((a, st) => a + parseNum(st.distance), 0);
@@ -104,7 +111,12 @@ const Analytics = (() => {
       else if (now.reps > prev.reps) { status = "up"; notes.push(`+${now.reps - prev.reps} reps`); }
       else if (now.reps < prev.reps * 0.9) { status = "down"; notes.push(`${now.reps - prev.reps} reps`); }
     } else if (now.type === "timed") {
-      if (now.seconds > prev.seconds) { status = "up"; notes.push(`+${now.seconds - prev.seconds}s`); }
+      const u = state.settings.units;
+      const pl = prev.topLoad || 0;
+      if (now.topLoad > pl) { status = "up"; notes.push(`+${now.topLoad - pl} ${u} added`); }
+      else if (now.topLoad === pl && pl > 0 && now.secsAtTop > (prev.secsAtTop || 0)) { status = "up"; notes.push(`+${now.secsAtTop - (prev.secsAtTop || 0)}s at +${pl}`); }
+      else if (now.topLoad < pl && now.seconds <= prev.seconds) { status = "down"; notes.push(`−${pl - now.topLoad} ${u} added`); }
+      else if (now.seconds > prev.seconds) { status = "up"; notes.push(`+${now.seconds - prev.seconds}s`); }
       else if (now.seconds < prev.seconds * 0.9) { status = "down"; notes.push(`${now.seconds - prev.seconds}s`); }
     } else {
       if (now.distance > prev.distance * 1.02) { status = "up"; notes.push(`+${(now.distance - prev.distance).toFixed(1)} mi`); }
@@ -172,8 +184,19 @@ const Analytics = (() => {
           if (now.topLoad === 0) r.best = Math.max(r.best || 0, now.reps);
           recs.set(now.exerciseId, r);
         } else if (now.type === "timed") {
-          if (seen > 0 && now.seconds > (r.best || 0)) newPRs.push({ kind: "seconds", value: now.seconds, prevValue: r.best || 0 });
-          r.best = Math.max(r.best || 0, now.seconds); recs.set(now.exerciseId, r);
+          // Heaviest added weight, longest hold at a given weight, total-seconds PR when unweighted
+          r.holdAt = r.holdAt || new Map();
+          const prevHoldAt = r.holdAt.get(now.topLoad) || 0;
+          if (seen > 0 && now.topLoad > 0 && now.topLoad > (r.holdLoad || 0)) newPRs.push({ kind: "holdLoad", value: now.topLoad, prevValue: r.holdLoad || 0 });
+          if (seen > 0 && now.topLoad > 0 && prevHoldAt > 0 && now.secsAtTop > prevHoldAt) newPRs.push({ kind: "hold", value: now.secsAtTop, prevValue: prevHoldAt, load: now.topLoad });
+          if (seen > 0 && now.topLoad === 0 && now.seconds > (r.best || 0)) newPRs.push({ kind: "seconds", value: now.seconds, prevValue: r.best || 0 });
+          r.holdLoad = Math.max(r.holdLoad || 0, now.topLoad);
+          for (const st of (entry.sets || []).filter(setHasData)) {
+            const L = parseNum(st.load), S = parseNum(st.seconds);
+            if (S > (r.holdAt.get(L) || 0)) r.holdAt.set(L, S);
+          }
+          if (now.topLoad === 0) r.best = Math.max(r.best || 0, now.seconds);
+          recs.set(now.exerciseId, r);
         } else if (now.type === "cardio") {
           if (seen > 0 && now.distance > (r.distance || 0) && now.distance > 0) newPRs.push({ kind: "distance", value: now.distance, prevValue: r.distance || 0 });
           if (seen > 0 && now.pace && r.pace && now.pace < r.pace) newPRs.push({ kind: "pace", value: now.pace, prevValue: r.pace });
