@@ -234,6 +234,7 @@ const ICON = {
   heart: `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 21s-7-4.6-9.3-9A5.3 5.3 0 0 1 12 6a5.3 5.3 0 0 1 9.3 6c-2.3 4.4-9.3 9-9.3 9Z"/></svg>`,
   flame: `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2c1 4 5 5 5 10a5 5 0 0 1-10 0c0-2 1-3 1-3s0 2 2 2c0-3-1-5 2-9Z"/></svg>`,
   clock: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`,
+  link: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1-1"/></svg>`,
   cloudOff: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4 4 0 0 1-.6-7.95A6 6 0 0 1 17.4 8.5M20 15.5A3.5 3.5 0 0 0 17 12"/><path d="M3 3l18 18"/></svg>`,
 };
 
@@ -1413,6 +1414,67 @@ function renderDuration(w) {
   }
 }
 
+const mmss = (s) => `${Math.floor((s || 0) / 60)}:${String(Math.round(s || 0) % 60).padStart(2, "0")}`;
+
+// ── Supersets ──────────────────────────────────────────────────────────────
+// Entries carry a group id and stay adjacent. Each exercise keeps its own sets,
+// history and records, so a superset counts every exercise in it individually.
+const newSupersetId = () => "ss" + Math.random().toString(36).slice(2, 7);
+
+function toggleSuperset(idx) {
+  const w = getWorkout(activeWorkoutId);
+  if (!w || idx < 1) return;
+  const cur = w.entries[idx], prev = w.entries[idx - 1];
+  if (cur.ss && cur.ss === prev.ss) {
+    const gid = cur.ss;
+    const rest = w.entries.filter((e, i) => i >= idx && e.ss === gid);
+    if (rest.length > 1) { const ng = newSupersetId(); rest.forEach(e => { e.ss = ng; }); }
+    else rest.forEach(e => { delete e.ss; });
+  } else {
+    const gid = prev.ss || newSupersetId();
+    prev.ss = gid;
+    cur.ss = gid;
+  }
+  cleanupSupersets(w);
+  saveState();
+  renderToday();
+}
+
+// A group needs at least two exercises; drop rest logs for groups that are gone.
+function cleanupSupersets(w) {
+  const counts = {};
+  w.entries.forEach(e => { if (e.ss) counts[e.ss] = (counts[e.ss] || 0) + 1; });
+  w.entries.forEach(e => { if (e.ss && counts[e.ss] < 2) delete e.ss; });
+  if (w.rests) for (const gid of Object.keys(w.rests)) if (!(counts[gid] > 1)) delete w.rests[gid];
+}
+
+let restTimer = null;
+const restTickers = [];
+
+function renderRestBar(w, gid) {
+  const wrap = document.createElement("div");
+  wrap.className = "ss-rest";
+  w.rests = w.rests || {};
+  const r = (w.rests[gid] = w.rests[gid] || { log: [], startedAt: null });
+  const draw = () => {
+    const running = r.startedAt ? Math.max(0, Math.round((Date.now() - r.startedAt) / 1000)) : 0;
+    const last = r.log.length ? r.log[r.log.length - 1] : null;
+    const avg = r.log.length ? Math.round(r.log.reduce((x, y) => x + y, 0) / r.log.length) : null;
+    wrap.innerHTML = `
+      <button class="btn btn-secondary btn-rest${r.startedAt ? " running" : ""}">${r.startedAt ? `${mmss(running)} · Done` : "Rest"}</button>
+      <span class="ss-rest-log">${r.log.length ? `${r.log.length} round${r.log.length > 1 ? "s" : ""} · last ${mmss(last)}${r.log.length > 1 ? ` · avg ${mmss(avg)}` : ""}` : ""}</span>`;
+    wrap.querySelector(".btn-rest").onclick = () => {
+      if (r.startedAt) { r.log.push(Math.max(1, Math.round((Date.now() - r.startedAt) / 1000))); r.startedAt = null; }
+      else r.startedAt = Date.now();
+      saveState();
+      draw();
+    };
+  };
+  draw();
+  restTickers.push(draw);
+  return wrap;
+}
+
 function renderToday() {
   $("#today-date").textContent = new Date().toLocaleDateString(undefined,
     {weekday:"long", month:"long", day:"numeric"});
@@ -1435,7 +1497,31 @@ function renderToday() {
 
   const entries = $("#entries");
   entries.innerHTML = "";
-  w.entries.forEach((entry, i) => entries.appendChild(renderEntry(entry, i)));
+  restTickers.length = 0;
+  let i = 0;
+  while (i < w.entries.length) {
+    const gid = w.entries[i].ss;
+    if (gid && w.entries[i + 1]?.ss === gid) {
+      const group = document.createElement("div");
+      group.className = "superset";
+      group.innerHTML = `<div class="ss-head"><span class="ss-tag">Superset</span></div>`;
+      while (i < w.entries.length && w.entries[i].ss === gid) {
+        group.appendChild(renderEntry(w.entries[i], i));
+        i++;
+      }
+      group.appendChild(renderRestBar(w, gid));
+      entries.appendChild(group);
+    } else {
+      entries.appendChild(renderEntry(w.entries[i], i));
+      i++;
+    }
+  }
+  if (restTimer) clearInterval(restTimer);
+  restTimer = setInterval(() => {
+    const cur = getWorkout(activeWorkoutId);
+    if (!cur) { clearInterval(restTimer); restTimer = null; return; }
+    if (Object.values(cur.rests || {}).some(r => r.startedAt)) restTickers.forEach(fn => fn());
+  }, 1000);
 }
 
 function renderEntry(entry, idx) {
@@ -1461,6 +1547,19 @@ function renderEntry(entry, idx) {
   noteWrap.innerHTML = `<input type="text" class="inp-note" placeholder="Note" value="${escapeHtml(entry.note || "")}" autocapitalize="sentences">`;
   noteWrap.querySelector(".inp-note").addEventListener("input", e => { entry.note = e.target.value; saveState(); });
   div.appendChild(noteWrap);
+
+  // Link with the exercise above into a superset (or unlink)
+  const actions = div.querySelector(".entry-actions");
+  if (idx > 0 && actions) {
+    const linked = !!entry.ss && entry.ss === w.entries[idx - 1].ss;
+    const btn = document.createElement("button");
+    btn.className = "icon-btn btn-superset" + (linked ? " on" : "");
+    btn.setAttribute("aria-label", linked ? "Unlink from superset" : "Superset with the exercise above");
+    btn.title = linked ? "Unlink from superset" : "Superset with the exercise above";
+    btn.innerHTML = ICON.link;
+    btn.onclick = () => toggleSuperset(idx);
+    actions.insertBefore(btn, actions.firstChild);
+  }
   return div;
 }
 
@@ -1521,7 +1620,7 @@ function renderSetEntry(entry, idx, ex, prevSets, w, type) {
 
   div.querySelector(".btn-edit-exercise").onclick = () => openExerciseEditor(ex.id, renderToday);
   div.querySelector(".btn-add-set").onclick = () => { entry.sets.push(blankSet(type)); saveState(); renderToday(); };
-  div.querySelector(".btn-remove-entry").onclick = () => { w.entries.splice(idx, 1); saveState(); renderToday(); };
+  div.querySelector(".btn-remove-entry").onclick = () => { w.entries.splice(idx, 1); cleanupSupersets(w); saveState(); renderToday(); };
   div.querySelectorAll(".btn-remove-set").forEach((btn, si) => {
     btn.onclick = () => {
       entry.sets.splice(si, 1);
@@ -1585,7 +1684,7 @@ function renderCardioEntry(entry, idx, ex, prevSets, w) {
 
   div.querySelector(".btn-edit-exercise").onclick = () => openExerciseEditor(ex.id, renderToday);
   div.querySelector(".btn-add-set").onclick = () => { entry.sets.push(blankSet("cardio")); saveState(); renderToday(); };
-  div.querySelector(".btn-remove-entry").onclick = () => { w.entries.splice(idx, 1); saveState(); renderToday(); };
+  div.querySelector(".btn-remove-entry").onclick = () => { w.entries.splice(idx, 1); cleanupSupersets(w); saveState(); renderToday(); };
   div.querySelectorAll(".btn-remove-set").forEach((btn, si) => {
     btn.onclick = () => {
       entry.sets.splice(si, 1);
@@ -1795,7 +1894,7 @@ function renderHistory() {
   const native = isNativeApp();
   list.innerHTML = items.map(w => {
     const s = workoutStats(w);
-    const detail = w.entries.map(e => {
+    const exLine = (e) => {
       const ex = state.exercises.find(x => x.id === e.exerciseId);
       const type = exerciseType(ex);
       const txt = setsSummary(type, e.sets, w.date);
@@ -1804,7 +1903,21 @@ function renderHistory() {
         <div class="history-sets">${escapeHtml(txt) || "(no sets)"}</div>
         ${e.note ? `<div class="history-note">${escapeHtml(e.note)}</div>` : ""}
       </div>`;
-    }).join("");
+    };
+    const parts = [];
+    for (let di = 0; di < w.entries.length; ) {
+      const gid = w.entries[di].ss;
+      if (gid && w.entries[di + 1]?.ss === gid) {
+        const group = [];
+        while (di < w.entries.length && w.entries[di].ss === gid) { group.push(w.entries[di]); di++; }
+        const rests = w.rests?.[gid]?.log || [];
+        const avg = rests.length ? Math.round(rests.reduce((x, y) => x + y, 0) / rests.length) : null;
+        parts.push(`<div class="history-superset"><div class="history-ss-head"><span class="ss-tag">Superset</span>${avg != null ? `<span class="muted small">rest ${mmss(avg)} avg</span>` : ""}</div>${group.map(exLine).join("")}</div>`);
+      } else {
+        parts.push(exLine(w.entries[di])); di++;
+      }
+    }
+    const detail = parts.join("");
 
     const timeBits = [];
     if (w.startTime && w.endTime) timeBits.push(`${w.startTime}–${w.endTime} · ${durationLabel(w.startTime, w.endTime)}`);

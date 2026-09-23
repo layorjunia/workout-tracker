@@ -284,6 +284,26 @@ select {
 .workout-actions .btn { flex: 1; min-height: 50px; }
 .workout-actions .btn-secondary { flex: 0.8; }
 
+.superset {
+  border: 1px solid var(--accent-soft); border-left: 3px solid var(--accent);
+  border-radius: var(--r-lg); padding: 10px; margin-bottom: 12px;
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.superset .entry { margin-bottom: 0; }
+.ss-head { display: flex; align-items: center; gap: 8px; padding: 0 2px; }
+.ss-tag {
+  font-size: 10px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--accent); background: var(--accent-soft); padding: 3px 8px; border-radius: 999px;
+}
+.ss-rest { display: flex; align-items: center; gap: 10px; padding: 0 2px 2px; }
+.ss-rest .btn-rest { min-height: 38px; padding: 0 16px; font-size: 14px; flex: 0 0 auto; }
+.ss-rest .btn-rest.running { background: var(--warn-soft); color: var(--warn); font-variant-numeric: tabular-nums; }
+.ss-rest-log { font-size: 12.5px; color: var(--text-dim); }
+.icon-btn.btn-superset.on { color: var(--accent); }
+.history-superset { border-left: 2px solid var(--accent-soft); padding-left: 10px; margin: 6px 0; }
+.history-ss-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+
 .entry {
   background: var(--bg-elev);
   border: 1px solid var(--border);
