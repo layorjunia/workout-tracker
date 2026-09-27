@@ -3195,6 +3195,23 @@ function bindEvents() {
   const syncNowBtn = $("#btn-health-sync-now");
   if (syncNowBtn) syncNowBtn.onclick = () => runNativeHealthSync(syncNowBtn, null);
 
+  // Steps tab: re-read HealthKit on demand — step totals first, then the rest.
+  const stepsSyncBtn = $("#btn-steps-sync");
+  if (stepsSyncBtn) stepsSyncBtn.onclick = async () => {
+    const label = stepsSyncBtn.textContent;
+    stepsSyncBtn.disabled = true; stepsSyncBtn.textContent = "Syncing\u2026";
+    try {
+      await refreshSteps();
+      if (window.WorkoutNativeHealth?.isNative && cloudUser) {
+        try { await window.WorkoutNativeHealth.syncNow(); renderHealth(); } catch (e) { /* steps still updated */ }
+      }
+      const v = stepView();
+      toast(`${fmt(v.todaySteps)} steps today`);
+    } finally {
+      stepsSyncBtn.disabled = false; stepsSyncBtn.textContent = label;
+    }
+  };
+
   $("#btn-export").onclick = exportJSON;
   $("#btn-import").onclick = () => $("#import-file").click();
   $("#import-file").onchange = e => { if (e.target.files[0]) importJSON(e.target.files[0]); };
