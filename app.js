@@ -487,8 +487,8 @@ function streakInfo(today = todayISO()) {
   }
 
   // Weekly buffer: a day under the goal still counts while the week is less than
-  // one day's goal behind pace at the end of that day. Each day is judged on its
-  // own end-of-day total, so a break stays broken; today is judged as if it ended now.
+  // one day's goal behind pace, and a day that fell behind counts back as soon as a
+  // later day in the same week catches the week up. Today is judged as if it ended now.
   let runWeek = null, runTotal = 0, weekTotal = 0, weekTarget = goal;
   for (let i = days.length - 1; i >= 0; i--) {
     const d = days[i];
@@ -496,9 +496,17 @@ function streakInfo(today = todayISO()) {
     if (ws !== runWeek) { runWeek = ws; runTotal = 0; }
     runTotal += d.steps || 0;
     const dayNumber = Math.round((new Date(d.date + "T00:00:00") - new Date(ws + "T00:00:00")) / 86400000) + 1;
-    d.rescued = !d.hit && goal * dayNumber - runTotal < goal;
-    d.counts = d.hit || d.rescued;
+    d.week = ws;
+    d.onPace = goal * dayNumber - runTotal < goal;
     if (i === 0) { weekTotal = runTotal; weekTarget = goal * dayNumber; }
+  }
+  let laterWeek = null, laterOnPace = false;
+  for (let i = 0; i < days.length; i++) {   // newest first: carry the catch-up back
+    const d = days[i];
+    if (d.week !== laterWeek) { laterWeek = d.week; laterOnPace = false; }
+    if (d.onPace) laterOnPace = true;
+    d.rescued = !d.hit && laterOnPace;
+    d.counts = d.hit || d.rescued;
   }
 
   let streak = 0;

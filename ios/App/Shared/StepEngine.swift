@@ -139,23 +139,34 @@ enum StepEngine {
         }
 
         // Weekly buffer: a day under the goal still counts while the week is less
-        // than one day's goal behind pace at the end of that day. Each day is judged
-        // on its own end-of-day total, so a break stays broken even if later days
-        // catch the week up. Today is judged as if it ended now.
+        // than one day's goal behind pace, and a day that fell behind counts back as
+        // soon as a later day in the same week catches the week up — miss two in a
+        // row, make the steps up by Sunday, and the whole week counts. Today is
+        // judged as if it ended now.
         var runningWeek = ""
         var runningTotal = 0
         var weekTotal = 0
         var weekTarget = goal
+        var weekOf = [String](repeating: "", count: days.count)
+        var onPace = [Bool](repeating: false, count: days.count)
         for idx in days.indices {
             let ws = weekStart(days[idx].date, cal) ?? days[idx].date
             if ws != runningWeek { runningWeek = ws; runningTotal = 0 }
             runningTotal += days[idx].steps
             let dayNumber = (daysBetween(ws, days[idx].date, cal) ?? 0) + 1   // Mon 1 … Sun 7
-            if !days[idx].hit && goal * dayNumber - runningTotal < goal {
+            weekOf[idx] = ws
+            onPace[idx] = goal * dayNumber - runningTotal < goal
+            if idx == todayIndex { weekTotal = runningTotal; weekTarget = goal * dayNumber }
+        }
+        var laterWeek = ""
+        var laterOnPace = false
+        for idx in days.indices.reversed() {   // newest first: carry the catch-up back
+            if weekOf[idx] != laterWeek { laterWeek = weekOf[idx]; laterOnPace = false }
+            if onPace[idx] { laterOnPace = true }
+            if !days[idx].hit && laterOnPace {
                 days[idx].rescued = true
                 days[idx].counts = true
             }
-            if idx == todayIndex { weekTotal = runningTotal; weekTarget = goal * dayNumber }
         }
 
         var base = 0

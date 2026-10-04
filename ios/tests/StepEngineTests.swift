@@ -78,9 +78,10 @@ check("5,000 + 5,001 → both days kept", wed(5000, 5001, 0).streakBase, 2)
 check("today safe once the week is under a day behind", wed(10000, 10000, 1).todayCounts, true)
 check("today not safe at exactly a day behind", wed(10000, 10000, 0).todayCounts, false)
 let comeback = wed(0, 30000, 0)
-check("a break is final: Monday stays broken after a 30,000 Tuesday", day(comeback, "2026-09-14")?.counts, Optional(false))
-check("…streak restarts from Tuesday", comeback.streakBase, 1)
-check("…and today is safe (week is ahead)", comeback.streak, 2)
+check("a 30,000 Tuesday counts Monday back", day(comeback, "2026-09-14")?.counts, Optional(true))
+check("…Monday is marked rescued", day(comeback, "2026-09-14")?.rescued, Optional(true))
+check("…streak covers both days", comeback.streakBase, 2)
+check("…and today is safe (week is ahead)", comeback.streak, 3)
 var edge: [String: Int] = [:]
 for d in ["2026-09-07","2026-09-08","2026-09-09","2026-09-10","2026-09-11","2026-09-12"] { edge[d] = 10000 }
 edge["2026-09-13"] = 1          // Sunday ends 9,999 behind the week
@@ -119,6 +120,31 @@ let s10 = StepEngine.compute(today: "2026-09-16", counts: [:], peaks: [:],
                              settings: StepSettings(workoutDates: ["2026-09-13", "2026-09-14", "2026-09-14", "2026-09-16", "2026-09-17"]),
                              computedAt: 0, denver)
 check("Mon–today only, each session counts", s10.workoutsThisWeek, 3)
+
+print("\n11) making the week up counts the missed days back (Sep 14 = Monday)")
+func week11(_ steps: [Int], today: String) -> StepSummary {
+    var c: [String: Int] = [:]
+    for (i, v) in steps.enumerated() { c[StepEngine.addDays("2026-09-14", i, denver)!] = v }
+    return StepEngine.compute(today: today, counts: c, peaks: [:], settings: flat, computedAt: 0, denver)
+}
+// Mon/Tue on goal, nothing Wed or Thu, then back at it: 76,000 for the week.
+let caughtUp = week11([10000, 10000, 0, 0, 10000, 23000, 23000], today: "2026-09-20")
+check("week total", caughtUp.weekTotal, 76000)
+check("Wednesday counts back", day(caughtUp, "2026-09-16")?.counts, Optional(true))
+check("Thursday counts back", day(caughtUp, "2026-09-17")?.counts, Optional(true))
+check("the whole week is a streak", caughtUp.streak, 7)
+let midWeek = week11([10000, 10000, 0, 0], today: "2026-09-17")
+check("on Thursday itself the week was behind", day(midWeek, "2026-09-16")?.counts, Optional(false))
+check("…and the streak was gone", midWeek.streak, 0)
+let shortOfIt = week11([10000, 10000, 0, 0, 10000, 15000, 15000], today: "2026-09-20")
+check("60,000 doesn't buy the missed days back", day(shortOfIt, "2026-09-16")?.counts, Optional(false))
+check("…streak only runs from Friday", shortOfIt.streak, 3)
+let nextWeek = StepEngine.compute(today: "2026-09-22",
+                                  counts: ["2026-09-14": 10000, "2026-09-15": 0, "2026-09-16": 0,
+                                           "2026-09-21": 30000, "2026-09-22": 30000],
+                                  peaks: [:], settings: flat, computedAt: 0, denver)
+check("a big week doesn't reach back into the week before", day(nextWeek, "2026-09-15")?.counts, Optional(false))
+check("…streak starts with the new week", nextWeek.streak, 2)
 
 print(failures == 0 ? "\nALL PASS" : "\n\(failures) FAILURES")
 exit(failures == 0 ? 0 : 1)
