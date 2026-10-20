@@ -527,6 +527,41 @@ function streakInfo(today = todayISO()) {
            week: thisWeek, weekRescued: !!days[0].rescued, weekFullGoal: goal * 7 };
 }
 
+// ── Long-term step goal ──
+// Same arithmetic as StepEngine.longGoalProgress (Swift), so the browser agrees with the phone.
+const daysBetweenISO = (a, b) => Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000);
+const roundAway = (x) => Math.sign(x) * Math.round(Math.abs(x));
+
+function longGoalProgress(plan, today, doneBefore, todaySteps) {
+  if (!plan || !(plan.target > 0) || !plan.start || !plan.end) return null;
+  const span = daysBetweenISO(plan.start, plan.end);
+  if (!(span >= 0)) return null;
+  const n = span + 1, target = plan.target;
+  const sinceStart = daysBetweenISO(plan.start, today), untilEnd = daysBetweenISO(today, plan.end);
+  const make = (phase, total, aheadBy, perDay, daysLeft, startsIn = 0) => ({
+    target, start: plan.start, end: plan.end, phase, total, percent: total / target,
+    aheadBy, perDay, daysLeft, totalDays: n, startsIn,
+  });
+  if (sinceStart < 0) return make("upcoming", 0, 0, Math.ceil(target / n), n, -sinceStart);
+  if (untilEnd < 0) return make(doneBefore >= target ? "reached" : "ended", doneBefore, doneBefore - target, 0, 0);
+  const left = n - sinceStart, total = doneBefore + todaySteps;
+  if (total >= target) return make("reached", total, total - target, 0, left);
+  const share = target / n;
+  const ahead = doneBefore - share * sinceStart + Math.max(0, todaySteps - share);
+  return make("active", total, roundAway(ahead), Math.ceil((target - doneBefore) / left), left);
+}
+
+function longGoalFromState(today = todayISO()) {
+  const plan = state.settings.stepLongGoal;
+  if (!plan) return null;
+  let done = 0, todayIn = 0;
+  for (let d = plan.start, i = 0; d <= plan.end && d <= today && i < 800; d = addDaysISO(d, 1), i++) {
+    const v = calSteps(stepsFor(d)) || 0;
+    if (d < today) done += v; else todayIn = v;
+  }
+  return longGoalProgress(plan, today, done, todayIn);
+}
+
 // ── Steps (iPhone) ──
 // On the iPhone, step totals come only from the native HealthKit read, keyed by
 // the day each total measured, and are stored under that key as-is.
@@ -559,6 +594,9 @@ function refreshSteps() {
         reminderEnabled: !!state.settings.stepReminder,
         reminderHour: state.settings.stepReminderHour || 19,
         workoutDates: qualifyingWorkoutDates(),
+        longTarget: state.settings.stepLongGoal?.target ?? null,
+        longStart: state.settings.stepLongGoal?.start ?? null,
+        longEnd: state.settings.stepLongGoal?.end ?? null,
       });
       if (res?.summary) nativeSteps = res.summary;
       if (res?.readOK && res.counts) storeNativeStepCounts(res.summary?.date, res.counts, res.peaks || {});
@@ -964,6 +1002,7 @@ function migrate(s) {
     s.stepsKeyedByDayV2 = true;
   }
   s.settings.stepCalActual ??= null;    // "…but I actually walked Y" → factor Y/X
+  s.settings.stepLongGoal ??= null;     // { target, start, end } — a step total between two dates
   s.settings.workoutGoalPerWeek ??= 4;
   s.profile = Object.assign(defaultProfile(), s.profile || {});
   s.profile.goals = Object.assign({ calories: null, protein: null }, s.profile.goals || {});
@@ -2621,6 +2660,7 @@ function stepView() {
       streak: s.streak, workouts: s.workoutsThisWeek, workoutGoal: s.workoutGoal,
       weekTotal: s.weekTotal, weekTarget: s.weekTarget,
       last14: (s.last14 || []).map(d => ({ date: d.date, steps: d.steps, hit: d.hit, rescued: d.rescued, hasData: d.hasData })),
+      longGoal: sameLongGoal(s.longGoal) ? s.longGoal : longGoalFromState(s.date),
     };
   }
   const w = streakInfo();
@@ -2629,7 +2669,58 @@ function stepView() {
     streak: w.streak, workouts: w.workouts, workoutGoal: w.workoutGoal,
     weekTotal: Math.round(w.week.total), weekTarget: w.week.needWithToday,
     last14: w.last14.map(d => ({ date: d.date, steps: d.steps, hit: d.hit, rescued: d.rescued, hasData: d.known })),
+    longGoal: longGoalFromState(),
   };
+}
+
+// The phone's numbers only stand while they were computed for the plan in settings.
+function sameLongGoal(g) {
+  const p = state.settings.stepLongGoal;
+  if (!g || !p) return !g && !p;
+  return g.target === p.target && g.start === p.start && g.end === p.end;
+}
+
+const longDate = (iso) => new Date(iso + "T00:00:00").toLocaleDateString(undefined, {
+  month: "short", day: "numeric", ...(iso.slice(0, 4) !== todayISO().slice(0, 4) ? { year: "numeric" } : {}),
+});
+
+function syncLongGoalFields() {
+  const plan = state.settings.stepLongGoal;
+  const set = (sel, val) => { const el = $(sel); if (el && document.activeElement !== el) el.value = val; };
+  set("#setting-long-target", plan ? plan.target.toLocaleString() : "");
+  set("#setting-long-start", plan ? plan.start : "");
+  set("#setting-long-end", plan ? plan.end : "");
+  const startEl = $("#setting-long-start"); if (startEl) startEl.min = addDaysISO(todayISO(), -399);
+  $("#btn-long-clear")?.classList.toggle("hidden", !plan);
+}
+
+function renderLongGoal(g) {
+  const wrap = $("#goal-card-wrap"), host = $("#goal-card");
+  if (!wrap || !host) return;
+  wrap.classList.toggle("hidden", !g);
+  if (!g) { host.innerHTML = ""; return; }
+  const pct = Math.floor(Math.min(g.percent, 9.99) * 100);
+  const on = g.phase === "reached" || (g.phase === "active" && g.aheadBy >= 0);
+  const off = g.phase === "active" && g.aheadBy < 0;
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const stat = (value, label, cls = "") => `<div class="lg-stat"><strong class="${cls}">${value}</strong><span>${label}</span></div>`;
+  let stats;
+  if (g.phase === "upcoming") {
+    stats = stat(g.startsIn, g.startsIn === 1 ? "day to start" : "days to start") + stat(fmt(g.perDay), "per day") + stat(g.totalDays, "days");
+  } else if (g.phase === "reached") {
+    stats = stat(fmt(g.aheadBy), "over", "good") + (g.daysLeft ? stat(g.daysLeft, g.daysLeft === 1 ? "day left" : "days left") : "");
+  } else if (g.phase === "ended") {
+    stats = stat(fmt(-g.aheadBy), "short", "bad") + stat(g.totalDays, "days");
+  } else {
+    stats = stat(fmt(Math.abs(g.aheadBy)), g.aheadBy > 0 ? "ahead" : g.aheadBy < 0 ? "behind" : "on track", on ? "good" : "warn")
+      + stat(fmt(g.perDay), "per day")
+      + stat(g.daysLeft, g.daysLeft === 1 ? "day left" : "days left");
+  }
+  host.innerHTML = `
+    <div class="lg-head"><strong>🎯 ${fmt(g.target)} steps</strong><span>${longDate(g.start)} – ${longDate(g.end)}</span></div>
+    <div class="lg-main"><span class="lg-pct${on ? " good" : ""}">${pct}%</span><span class="lg-count"><strong>${fmt(g.total)}</strong> of ${fmt(g.target)}</span></div>
+    <div class="wk-bar lg-bar${on ? " good" : off ? " warn" : ""}"><i style="width:${Math.min(100, g.percent * 100).toFixed(1)}%"></i></div>
+    <div class="lg-stats">${stats}</div>`;
 }
 
 function renderSteps() {
@@ -2641,9 +2732,11 @@ function renderSteps() {
   const calA = $("#setting-cal-apple"), calB = $("#setting-cal-actual");
   if (calA && !calA.value && state.settings.stepCalApple) calA.value = state.settings.stepCalApple;
   if (calB && !calB.value && state.settings.stepCalActual) calB.value = state.settings.stepCalActual;
-  if (stepBridge() && !nativeSteps) { host.innerHTML = ""; return; }
+  syncLongGoalFields();
+  if (stepBridge() && !nativeSteps) { host.innerHTML = ""; renderLongGoal(longGoalFromState()); return; }
 
   const v = stepView();
+  renderLongGoal(v.longGoal);
   const tier = streakTier(v.streak);
   const toNext = v.streak > 0 ? 7 - (v.streak % 7) : null;
   const nextTier = streakTier((Math.floor(v.streak / 7) + 1) * 7);
@@ -3126,6 +3219,41 @@ function bindEvents() {
       saveState(); refreshSteps();
     };
   });
+
+  // Long-term goal: a step total between two dates. Clearing the total removes it.
+  const lgTarget = $("#setting-long-target"), lgStart = $("#setting-long-start"), lgEnd = $("#setting-long-end");
+  const parseTarget = (txt) => {
+    const m = String(txt).trim().toLowerCase().replace(/,/g, "").match(/^(\d*\.?\d+)\s*([km])?/);
+    return m ? Math.round(parseFloat(m[1]) * ({ k: 1e3, m: 1e6 }[m[2]] || 1)) : 0;
+  };
+  const saveLongGoal = () => {
+    const target = parseTarget(lgTarget.value);
+    if (target > 0) {
+      const start = lgStart.value || todayISO();
+      let end = lgEnd.value || `${start.slice(0, 4)}-12-31`;
+      if (end < start) end = `${start.slice(0, 4)}-12-31`;
+      state.settings.stepLongGoal = { target, start, end };
+    } else {
+      state.settings.stepLongGoal = null;
+    }
+    const plan = state.settings.stepLongGoal;
+    lgTarget.value = plan ? plan.target.toLocaleString() : "";
+    lgStart.value = plan ? plan.start : "";
+    lgEnd.value = plan ? plan.end : "";
+    saveState();
+    syncLongGoalFields();
+    renderSteps();
+    refreshSteps();
+  };
+  [lgTarget, lgStart, lgEnd].forEach(el => { if (el) el.onchange = saveLongGoal; });
+  const lgClear = $("#btn-long-clear");
+  if (lgClear) lgClear.onclick = () => {
+    state.settings.stepLongGoal = null;
+    saveState();
+    syncLongGoalFields();
+    renderSteps();
+    refreshSteps();
+  };
 
   const bwBtn = $("#btn-bw-log");
   if (bwBtn) bwBtn.onclick = () => {

@@ -14,8 +14,11 @@ extension StepSummary {
         for back in 0..<10 {
             if let d = StepEngine.addDays(today, -back, cal) { counts[d] = back == 0 ? 6500 : 11000 }
         }
+        let plan = LongGoalPlan(target: 1_000_000,
+                                start: StepEngine.addDays(today, -9, cal) ?? today,
+                                end: StepEngine.addDays(today, 80, cal) ?? today)
         return StepEngine.compute(today: today, counts: counts, peaks: [:],
-                                  settings: StepSettings(workoutDates: [today]), computedAt: 0, cal)
+                                  settings: StepSettings(workoutDates: [today], longGoal: plan), computedAt: 0, cal)
     }
 }
 
@@ -76,6 +79,72 @@ func fmtSteps(_ n: Int) -> String {
     return (s.hasSuffix(".0") ? String(s.dropLast(2)) : s) + "k"
 }
 
+func fmtGoal(_ n: Int) -> String {
+    let v = abs(n)
+    if v >= 1_000_000 {
+        let m = String(format: "%.2f", Double(v) / 1_000_000)
+        return m.replacingOccurrences(of: #"\.?0+$"#, with: "", options: .regularExpression) + "M"
+    }
+    if v >= 100_000 { return "\((v + 500) / 1000)k" }
+    return fmtSteps(v)
+}
+
+/// The long-term goal as one glanceable line: where you are, whether you're on
+/// the line, and what each remaining day needs.
+struct GoalRow: View {
+    let g: LongGoalProgress
+    var compact = false
+
+    var tint: Color {
+        switch g.phase {
+        case .reached: return .green
+        case .ended, .upcoming: return .secondary
+        case .active: return g.aheadBy >= 0 ? .green : .orange
+        }
+    }
+    var pct: String { "\(Int((min(g.percent, 9.99) * 100).rounded(.down)))%" }
+    var status: String {
+        switch g.phase {
+        case .upcoming: return "starts in \(g.startsIn)d"
+        case .reached: return "done ✓"
+        case .ended: return "\(fmtGoal(g.aheadBy)) short"
+        case .active:
+            if g.aheadBy == 0 { return "on track" }
+            return "\(fmtGoal(g.aheadBy)) \(g.aheadBy > 0 ? "ahead" : "behind")"
+        }
+    }
+
+    var body: some View {
+        if compact {
+            HStack(spacing: 4) {
+                Text("🎯").font(.system(size: 11))
+                Text(pct).font(.system(size: 12, weight: .heavy))
+                Text(g.phase == .active ? "\(g.aheadBy >= 0 ? "+" : "−")\(fmtGoal(g.aheadBy))" : status)
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(tint)
+            .lineLimit(1).minimumScaleFactor(0.7)
+        } else {
+            HStack(spacing: 7) {
+                Text("🎯").font(.system(size: 12))
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.primary.opacity(0.12))
+                        Capsule().fill(tint).frame(width: max(5, geo.size.width * min(1, g.percent)))
+                    }
+                }
+                .frame(height: 6)
+                Text(pct).font(.system(size: 12, weight: .heavy))
+                Text(status).font(.system(size: 11, weight: .semibold)).foregroundStyle(tint)
+                if g.phase == .active {
+                    Text("· \(fmtGoal(g.perDay))/day").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                }
+            }
+            .lineLimit(1).minimumScaleFactor(0.8)
+        }
+    }
+}
+
 struct RingView: View {
     let pct: Double
     let done: Bool
@@ -103,64 +172,77 @@ struct StreakWidgetView: View {
         let weekHit = s.workoutsThisWeek >= s.workoutGoal
         switch family {
         case .systemMedium:
-            HStack(spacing: 16) {
-                ring(s: s, pct: pct, tier: tier, weekHit: weekHit)
-                VStack(alignment: .leading, spacing: 5) {
-                    flame(s: s, tier: tier)
-                    if tier.milestone {
-                        Text("✨ \(tier.label)! ✨")
-                            .font(.system(size: 12, weight: .heavy))
-                            .foregroundStyle(tier.color)
-                    } else if !tier.label.isEmpty {
-                        Text(tier.label)
-                            .font(.system(size: 10, weight: .heavy))
-                            .tracking(1)
-                            .padding(.horizontal, 7).padding(.vertical, 2)
-                            .background(tier.color.opacity(0.18), in: Capsule())
-                            .foregroundStyle(tier.color)
-                    }
-                    Text("\(s.todaySteps.formatted()) / \(s.goal.formatted()) steps")
-                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
-                    Text("🏋️ \(s.workoutsThisWeek)/\(s.workoutGoal) workouts\(weekHit ? " ✓" : "")")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(weekHit ? Color.green : Color.purple)
-                    HStack(spacing: 5) {
-                        ForEach(Array(s.last14.suffix(7).enumerated()), id: \.offset) { _, d in
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(d.counts ? Color.green
-                                      : (d.hasData && d.date != s.date ? Color.red.opacity(0.35) : Color.primary.opacity(0.12)))
-                                .frame(width: 16, height: 16)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 16) {
+                    ring(s: s, pct: pct, tier: tier, weekHit: weekHit)
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack(spacing: 7) {
+                            flame(s: s, tier: tier)
+                            tierBadge(tier, large: true)
+                        }
+                        Text("\(s.todaySteps.formatted()) / \(s.goal.formatted()) steps")
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
+                        Text("🏋️ \(s.workoutsThisWeek)/\(s.workoutGoal) workouts\(weekHit ? " ✓" : "")")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(weekHit ? Color.green : Color.purple)
+                        HStack(spacing: 5) {
+                            ForEach(Array(s.last14.suffix(7).enumerated()), id: \.offset) { _, d in
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(d.counts ? Color.green
+                                          : (d.hasData && d.date != s.date ? Color.red.opacity(0.35) : Color.primary.opacity(0.12)))
+                                    .frame(width: 16, height: 16)
+                            }
                         }
                     }
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
+                if let g = s.longGoal { GoalRow(g: g) }
             }
         default:
-            VStack(spacing: 7) {
-                ring(s: s, pct: pct, tier: tier, weekHit: weekHit)
+            VStack(spacing: 6) {
+                ring(s: s, pct: pct, tier: tier, weekHit: weekHit, size: s.longGoal == nil ? 66 : 58)
                 flame(s: s, tier: tier)
-                if tier.milestone {
-                    Text("✨ \(tier.label) ✨").font(.system(size: 10, weight: .heavy)).foregroundStyle(tier.color)
-                } else if !tier.label.isEmpty {
-                    Text(tier.label).font(.system(size: 9, weight: .heavy)).tracking(1).foregroundStyle(tier.color)
-                }
+                tierBadge(tier, large: false)
+                if let g = s.longGoal { GoalRow(g: g, compact: true) }
+            }
+        }
+    }
+
+    /// Week-milestone badge; nothing until the first full week.
+    @ViewBuilder
+    func tierBadge(_ tier: Tier, large: Bool) -> some View {
+        if tier.milestone {
+            Text(large ? "✨ \(tier.label)! ✨" : "✨ \(tier.label) ✨")
+                .font(.system(size: large ? 12 : 10, weight: .heavy))
+                .foregroundStyle(tier.color)
+        } else if !tier.label.isEmpty {
+            if large {
+                Text(tier.label)
+                    .font(.system(size: 10, weight: .heavy))
+                    .tracking(1)
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(tier.color.opacity(0.18), in: Capsule())
+                    .foregroundStyle(tier.color)
+            } else {
+                Text(tier.label).font(.system(size: 9, weight: .heavy)).tracking(1).foregroundStyle(tier.color)
             }
         }
     }
 
     // Outer ring: today's steps. Inner ring: workouts this week vs goal.
-    func ring(s: StepSummary, pct: Double, tier: Tier, weekHit: Bool) -> some View {
+    func ring(s: StepSummary, pct: Double, tier: Tier, weekHit: Bool, size: CGFloat = 66) -> some View {
         let wkPct = s.workoutGoal > 0 ? Double(s.workoutsThisWeek) / Double(s.workoutGoal) : 0
+        let k = size / 66
         return ZStack {
-            RingView(pct: pct, done: s.goalMet, tint: s.streak >= 7 ? tier.color : .blue, lineWidth: 7)
-            RingView(pct: wkPct, done: weekHit, tint: .purple, lineWidth: 5)
-                .frame(width: 46, height: 46)
+            RingView(pct: pct, done: s.goalMet, tint: s.streak >= 7 ? tier.color : .blue, lineWidth: 7 * k)
+            RingView(pct: wkPct, done: weekHit, tint: .purple, lineWidth: 5 * k)
+                .frame(width: 46 * k, height: 46 * k)
             Text(fmtSteps(s.todaySteps))
-                .font(.system(size: 13, weight: .heavy))
+                .font(.system(size: 13 * k, weight: .heavy))
                 .minimumScaleFactor(0.5).lineLimit(1)
-                .frame(maxWidth: 34)
+                .frame(maxWidth: 34 * k)
         }
-        .frame(width: 66, height: 66)
+        .frame(width: size, height: size)
     }
 
     func flame(s: StepSummary, tier: Tier) -> some View {

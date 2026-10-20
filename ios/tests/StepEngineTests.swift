@@ -146,5 +146,91 @@ let nextWeek = StepEngine.compute(today: "2026-09-22",
 check("a big week doesn't reach back into the week before", day(nextWeek, "2026-09-15")?.counts, Optional(false))
 check("…streak starts with the new week", nextWeek.streak, 2)
 
+print("\n12) long-term goal: 1,000,000 steps, Oct 1 → Dec 31 (92 days, 10,870 a day)")
+let plan12 = LongGoalPlan(target: 1_000_000, start: "2026-10-01", end: "2026-12-31")
+func lg(_ counts: [String: Int], today: String, settings: StepSettings = StepSettings(goal: 10000, longGoal: plan12)) -> LongGoalProgress? {
+    StepEngine.compute(today: today, counts: counts, peaks: [:], settings: settings, computedAt: 0, denver).longGoal
+}
+let oct = ["2026-10-01": 12000, "2026-10-02": 9000, "2026-10-03": 15000]
+var a12 = oct; a12["2026-10-04"] = 4000
+let early = lg(a12, today: "2026-10-04")
+check("phase", early?.phase, Optional(LongGoalProgress.Phase.active))
+check("total includes today", early?.total, Optional(40000))
+check("percent", early?.percent, Optional(0.04))
+check("ahead of the plan through yesterday (short today isn't charged yet)", early?.aheadBy, Optional(3391))
+check("per day from today on", early?.perDay, Optional(10832))
+check("days left, today included", early?.daysLeft, Optional(89))
+check("length", early?.totalDays, Optional(92))
+a12["2026-10-04"] = 15000
+check("a big day today adds only what's past the day's share", lg(a12, today: "2026-10-04")?.aheadBy, Optional(7522))
+check("…per day is unchanged by today's steps", lg(a12, today: "2026-10-04")?.perDay, Optional(10832))
+let behind12 = lg(["2026-10-01": 5000, "2026-10-02": 5000, "2026-10-03": 5000], today: "2026-10-04")
+check("behind", behind12?.aheadBy, Optional(-17609))
+check("…and the daily need rises", behind12?.perDay, Optional(11068))
+let day1 = lg([:], today: "2026-10-01")
+check("first day: on track", day1?.aheadBy, Optional(0))
+check("first day: the plan's daily amount", day1?.perDay, Optional(10870))
+check("first day: all days left", day1?.daysLeft, Optional(92))
+
+print("   — outside the dates")
+let before12 = lg(["2026-09-30": 20000], today: "2026-09-28")
+check("upcoming", before12?.phase, Optional(LongGoalProgress.Phase.upcoming))
+check("…starts in", before12?.startsIn, Optional(3))
+check("…nothing counted yet", before12?.total, Optional(0))
+var wide12 = oct; wide12["2026-09-30"] = 50000; wide12["2026-10-04"] = 4000
+check("steps before the start never count", lg(wide12, today: "2026-10-04")?.total, Optional(40000))
+var over12: [String: Int] = [:]
+for i in 1...31 { over12[String(format: "2026-10-%02d", i)] = 20000 }
+for i in 1...30 { over12[String(format: "2026-11-%02d", i)] = 20000 }
+for i in 1...31 { over12[String(format: "2026-12-%02d", i)] = 20000 }
+over12["2027-01-01"] = 40000
+let done12 = lg(over12, today: "2027-01-02")
+check("finished and reached", done12?.phase, Optional(LongGoalProgress.Phase.reached))
+check("steps after the end never count", done12?.total, Optional(1_840_000))
+check("surplus over the target", done12?.aheadBy, Optional(840_000))
+var short12: [String: Int] = [:]
+for i in 1...31 { short12[String(format: "2026-10-%02d", i)] = 9000 }
+for i in 1...30 { short12[String(format: "2026-11-%02d", i)] = 9000 }
+for i in 1...31 { short12[String(format: "2026-12-%02d", i)] = 9000 }
+let ended12 = lg(short12, today: "2027-01-02")
+check("finished short", ended12?.phase, Optional(LongGoalProgress.Phase.ended))
+check("…how far short", ended12?.aheadBy, Optional(-172_000))
+check("…no days left", ended12?.daysLeft, Optional(0))
+let early12 = lg(["2026-10-01": 600000, "2026-10-02": 450000], today: "2026-10-02")
+check("reached before the end", early12?.phase, Optional(LongGoalProgress.Phase.reached))
+check("…nothing more needed", early12?.perDay, Optional(0))
+check("…days still left", early12?.daysLeft, Optional(91))
+
+print("   — calibration, bad plans, carrying forward")
+let cal12 = StepEngine.compute(today: "2026-10-01", counts: ["2026-10-01": 7600], peaks: [:],
+                               settings: StepSettings(goal: 10000, calApple: 7600, calActual: 10000, longGoal: plan12),
+                               computedAt: 0, denver).longGoal
+check("counted the way every other step is", cal12?.total, Optional(10000))
+check("end before start → no goal", lg(a12, today: "2026-10-04", settings: StepSettings(longGoal: LongGoalPlan(target: 1000, start: "2026-10-05", end: "2026-10-01"))), Optional<LongGoalProgress>.none)
+check("zero target → no goal", lg(a12, today: "2026-10-04", settings: StepSettings(longGoal: LongGoalPlan(target: 0, start: "2026-10-01", end: "2026-12-31"))), Optional<LongGoalProgress>.none)
+check("no plan → no goal", lg(a12, today: "2026-10-04", settings: StepSettings()), Optional<LongGoalProgress>.none)
+let oneDay = lg(["2026-10-01": 4000], today: "2026-10-01", settings: StepSettings(longGoal: LongGoalPlan(target: 10000, start: "2026-10-01", end: "2026-10-01")))
+check("a one-day goal", oneDay?.totalDays, Optional(1))
+let base12 = StepEngine.compute(today: "2026-10-04", counts: a12, peaks: [:],
+                                settings: StepSettings(goal: 10000, longGoal: plan12), computedAt: 0, denver)
+let next12 = StepEngine.project(base12, to: "2026-10-05", settings: StepSettings(goal: 10000, longGoal: plan12), denver)
+check("next morning keeps everything counted", next12.longGoal?.total, Optional(base12.longGoal!.total))
+check("…one more day gone", next12.longGoal?.daysLeft, Optional(88))
+check("…a day that beat its share: same figure across midnight", next12.longGoal?.aheadBy, base12.longGoal?.aheadBy)
+var shortDay12 = oct; shortDay12["2026-10-04"] = 4000
+let baseShort12 = StepEngine.compute(today: "2026-10-04", counts: shortDay12, peaks: [:],
+                                     settings: StepSettings(goal: 10000, longGoal: plan12), computedAt: 0, denver)
+let nextShort12 = StepEngine.project(baseShort12, to: "2026-10-05", settings: StepSettings(goal: 10000, longGoal: plan12), denver)
+check("…a short day is booked at midnight", nextShort12.longGoal?.aheadBy, Optional(-3478))
+let other12 = StepSettings(goal: 10000, longGoal: LongGoalPlan(target: 2_000_000, start: "2026-10-01", end: "2026-12-31"))
+check("a changed plan isn't carried from the old numbers",
+      StepEngine.project(base12, to: "2026-10-05", settings: other12, denver).longGoal, Optional<LongGoalProgress>.none)
+let roundTrip = try! JSONDecoder().decode(StepSummary.self, from: JSONEncoder().encode(base12))
+check("survives storage", roundTrip, base12)
+let oldSettings = try? JSONDecoder().decode(StepSettings.self, from: Data(
+    #"{"goal":10000,"workoutGoal":4,"reminderEnabled":false,"reminderHour":19,"workoutDates":[]}"#.utf8))
+check("settings saved before this feature still load", oldSettings?.goal, Optional(10000))
+check("…without a goal", oldSettings?.longGoal, Optional<LongGoalPlan>.none)
+
 print(failures == 0 ? "\nALL PASS" : "\n\(failures) FAILURES")
 exit(failures == 0 ? 0 : 1)

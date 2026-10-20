@@ -636,6 +636,25 @@ details.setup .setup-list { margin-top: 8px; }
 .wk-goal.hit .wk-bar i { background: var(--success); }
 .wk-goal.hit strong { color: var(--success); }
 
+/* Long-term step goal */
+.lg-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 14px; }
+.lg-head span { color: var(--text-dim); font-size: 12.5px; white-space: nowrap; }
+.lg-main { display: flex; align-items: baseline; gap: 12px; margin: 10px 0 8px; }
+.lg-pct { font-size: 34px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+.lg-pct.good { color: var(--success); }
+.lg-count { color: var(--text-dim); font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.lg-count strong { color: var(--text); }
+.lg-bar { flex: none; height: 10px; }
+.lg-bar.good i { background: var(--success); }
+.lg-bar.warn i { background: var(--warn); }
+.lg-stats { display: flex; gap: 8px; margin-top: 14px; }
+.lg-stat { flex: 1; min-width: 0; background: var(--bg-elev-2); border-radius: var(--r-sm); padding: 9px 10px; text-align: center; }
+.lg-stat strong { display: block; font-size: 17px; font-weight: 800; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.lg-stat strong.good { color: var(--success); }
+.lg-stat strong.warn { color: var(--warn); }
+.lg-stat strong.bad { color: var(--danger); }
+.lg-stat span { display: block; margin-top: 2px; font-size: 11px; color: var(--text-dim); font-weight: 600; }
+
 .bw-big { font-size: 30px; font-weight: 800; letter-spacing: -0.025em; line-height: 1; }
 .bw-list { margin-top: 10px; }
 .bw-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px dashed var(--border); font-size: 13.5px; }

@@ -15,11 +15,35 @@ struct StepSettings: Codable, Equatable {
     var reminderEnabled: Bool = false
     var reminderHour: Int = 19
     var workoutDates: [String] = []  // one entry per qualifying session
+    var longGoal: LongGoalPlan? = nil
 
     var calibration: Double {
         guard let a = calApple, let b = calActual, a > 0, b > 0 else { return 1 }
         return min(3, max(0.5, b / a))
     }
+}
+
+/// A step total to reach between two dates, both inclusive.
+struct LongGoalPlan: Codable, Equatable {
+    var target: Int
+    var start: String
+    var end: String
+}
+
+struct LongGoalProgress: Codable, Equatable {
+    enum Phase: String, Codable { case upcoming, active, reached, ended }
+    var target: Int
+    var start: String
+    var end: String
+    var phase: Phase
+    var total: Int          // steps counted from the start through today
+    var percent: Double     // total / target; 1 = done
+    var aheadBy: Int        // against the straight-line plan; negative = behind
+                            // (reached/ended: total − target)
+    var perDay: Int         // what each remaining day needs, today included
+    var daysLeft: Int       // today included; 0 once the end date has passed
+    var totalDays: Int
+    var startsIn: Int       // days until the start; 0 once begun
 }
 
 struct StepDay: Codable, Equatable {
@@ -50,6 +74,7 @@ struct StepSummary: Codable, Equatable {
     var workoutGoal: Int
     var last14: [StepDay]
     var computedAt: Double
+    var longGoal: LongGoalProgress? = nil
 }
 
 enum StepEngine {
@@ -109,6 +134,44 @@ enum StepEngine {
             out = out.filter { $0.key >= oldest }
         }
         return out
+    }
+
+    // MARK: Long-term goal
+
+    /// Progress toward a step total between two dates (both inclusive).
+    /// `doneBefore` is every counted step before today inside the range and
+    /// `todaySteps` is today's. Today only adds to "ahead" once it passes the
+    /// plan's daily share, so the figure doesn't swing negative every morning;
+    /// a short day is booked at midnight.
+    static func longGoalProgress(_ plan: LongGoalPlan, today: String, doneBefore: Int, todaySteps: Int,
+                                 _ cal: Calendar) -> LongGoalProgress? {
+        guard plan.target > 0,
+              let span = daysBetween(plan.start, plan.end, cal), span >= 0,
+              let sinceStart = daysBetween(plan.start, today, cal),
+              let untilEnd = daysBetween(today, plan.end, cal) else { return nil }
+        let n = span + 1
+        let target = plan.target
+        func make(_ phase: LongGoalProgress.Phase, total: Int, ahead: Int, perDay: Int,
+                  left: Int, startsIn: Int = 0) -> LongGoalProgress {
+            LongGoalProgress(target: target, start: plan.start, end: plan.end, phase: phase, total: total,
+                             percent: Double(total) / Double(target), aheadBy: ahead, perDay: perDay,
+                             daysLeft: left, totalDays: n, startsIn: startsIn)
+        }
+        if sinceStart < 0 {
+            return make(.upcoming, total: 0, ahead: 0, perDay: Int((Double(target) / Double(n)).rounded(.up)),
+                        left: n, startsIn: -sinceStart)
+        }
+        if untilEnd < 0 {
+            return make(doneBefore >= target ? .reached : .ended, total: doneBefore,
+                        ahead: doneBefore - target, perDay: 0, left: 0)
+        }
+        let left = n - sinceStart
+        let total = doneBefore + todaySteps
+        if total >= target { return make(.reached, total: total, ahead: total - target, perDay: 0, left: left) }
+        let share = Double(target) / Double(n)
+        let ahead = Double(doneBefore) - share * Double(sinceStart) + max(0, Double(todaySteps) - share)
+        let perDay = Int((Double(target - doneBefore) / Double(left)).rounded(.up))
+        return make(.active, total: total, ahead: Int(ahead.rounded()), perDay: perDay, left: left)
     }
 
     // MARK: Compute
@@ -176,6 +239,16 @@ enum StepEngine {
         let now = days[todayIndex]
         let ws = weekStart(today, cal) ?? today
 
+        var longGoal: LongGoalProgress? = nil
+        if let plan = settings.longGoal {
+            var done = 0
+            var todayIn = 0
+            for d in days where d.date >= plan.start && d.date <= plan.end {
+                if d.date < today { done += d.steps } else if d.date == today { todayIn = d.steps }
+            }
+            longGoal = longGoalProgress(plan, today: today, doneBefore: done, todaySteps: todayIn, cal)
+        }
+
         return StepSummary(
             date: today, todayRaw: max(now.raw, now.peak), todaySteps: now.steps, goal: goal,
             goalMet: now.hit, todayCounts: now.counts,
@@ -184,7 +257,7 @@ enum StepEngine {
             weekOnPace: weekTotal >= weekTarget,
             workoutsThisWeek: settings.workoutDates.filter { $0 >= ws && $0 <= today }.count,
             workoutGoal: max(1, settings.workoutGoal),
-            last14: Array(days.suffix(14)), computedAt: computedAt)
+            last14: Array(days.suffix(14)), computedAt: computedAt, longGoal: longGoal)
     }
 
     // MARK: Carry forward without a read
@@ -209,6 +282,12 @@ enum StepEngine {
         let finished = min(max(daysBetween(wsNew, today, cal) ?? 0, 0), 7)
         out.weekTarget = s.goal * (finished + 1)
         out.weekOnPace = out.weekTotal >= out.weekTarget
+        if let plan = settings.longGoal, let old = s.longGoal,
+           old.target == plan.target, old.start == plan.start, old.end == plan.end {
+            out.longGoal = longGoalProgress(plan, today: today, doneBefore: old.total, todaySteps: 0, cal)
+        } else {
+            out.longGoal = nil
+        }
         let byDate = Dictionary(s.last14.map { ($0.date, $0) }, uniquingKeysWith: { a, _ in a })
         out.last14 = (0..<14).reversed().compactMap { back in
             guard let key = addDays(today, -back, cal) else { return nil }

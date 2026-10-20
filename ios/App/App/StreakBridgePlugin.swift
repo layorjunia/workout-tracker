@@ -28,6 +28,12 @@ public class StreakBridgePlugin: CAPPlugin, CAPBridgedPlugin {
             s.reminderEnabled = call.getBool("reminderEnabled") ?? s.reminderEnabled
             s.reminderHour = call.getInt("reminderHour") ?? s.reminderHour
             s.workoutDates = call.getArray("workoutDates", String.self) ?? s.workoutDates
+            if let target = call.getInt("longTarget"), target > 0,
+               let start = call.getString("longStart"), let end = call.getString("longEnd") {
+                s.longGoal = LongGoalPlan(target: target, start: start, end: end)
+            } else {
+                s.longGoal = nil
+            }
             StepStore.saveSettings(s)
         }
         StepStore.refresh(source: "app") { summary, fresh in

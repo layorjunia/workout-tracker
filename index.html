@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <title>Workout Tracker</title>
-<link rel="stylesheet" href="styles.css?v=53">
+<link rel="stylesheet" href="styles.css?v=54">
 </head>
 <body>
 
@@ -193,6 +193,9 @@
       <div id="steps-card"></div>
       <button class="btn btn-secondary native-only" id="btn-steps-sync" style="margin-top:12px;width:100%">Sync Apple Health now</button>
     </div>
+    <div class="card hidden" id="goal-card-wrap">
+      <div id="goal-card"></div>
+    </div>
     <div class="card">
       <div class="row" style="align-items:flex-end">
         <label class="col" style="margin:0">
@@ -222,6 +225,23 @@
           <input type="number" id="setting-cal-actual" inputmode="numeric" placeholder="10000">
         </label>
       </div>
+      <div class="row" style="margin-top:12px; align-items:flex-end">
+        <label class="col" style="margin:0">
+          <span class="label">Long-term goal (steps)</span>
+          <input type="text" id="setting-long-target" inputmode="numeric" placeholder="1,000,000" autocomplete="off">
+        </label>
+      </div>
+      <div class="row" style="margin-top:10px; align-items:flex-end">
+        <label class="col" style="margin:0">
+          <span class="label">Starts</span>
+          <input type="date" id="setting-long-start">
+        </label>
+        <label class="col" style="margin:0">
+          <span class="label">Ends</span>
+          <input type="date" id="setting-long-end">
+        </label>
+      </div>
+      <button class="btn btn-ghost danger hidden" id="btn-long-clear" style="margin-top:8px;width:100%">Remove goal</button>
     </div>
   </div>
 </section>
@@ -664,10 +684,10 @@
   </button>
 </nav>
 
-<script src="vendor/chart.umd.js?v=53"></script>
-<script src="app.js?v=53"></script>
-<script src="analytics.js?v=53"></script>
-<script type="module" src="vendor/firebase-sync.bundle.js?v=53"></script>
-<script src="capacitor-health.js?v=53"></script>
+<script src="vendor/chart.umd.js?v=54"></script>
+<script src="app.js?v=54"></script>
+<script src="analytics.js?v=54"></script>
+<script type="module" src="vendor/firebase-sync.bundle.js?v=54"></script>
+<script src="capacitor-health.js?v=54"></script>
 </body>
 </html>
