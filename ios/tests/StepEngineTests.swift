@@ -163,7 +163,7 @@ check("days left, today included", early?.daysLeft, Optional(89))
 check("length", early?.totalDays, Optional(92))
 a12["2026-10-04"] = 15000
 check("a big day today adds only what's past the day's share", lg(a12, today: "2026-10-04")?.aheadBy, Optional(7522))
-check("…per day is unchanged by today's steps", lg(a12, today: "2026-10-04")?.perDay, Optional(10832))
+check("…and walking past the day's quota lowers the daily need at once", lg(a12, today: "2026-10-04")?.perDay, Optional(10785))
 let behind12 = lg(["2026-10-01": 5000, "2026-10-02": 5000, "2026-10-03": 5000], today: "2026-10-04")
 check("behind", behind12?.aheadBy, Optional(-17609))
 check("…and the daily need rises", behind12?.perDay, Optional(11068))
@@ -231,6 +231,38 @@ let oldSettings = try? JSONDecoder().decode(StepSettings.self, from: Data(
     #"{"goal":10000,"workoutGoal":4,"reminderEnabled":false,"reminderHour":19,"workoutDates":[]}"#.utf8))
 check("settings saved before this feature still load", oldSettings?.goal, Optional(10000))
 check("…without a goal", oldSettings?.longGoal, Optional<LongGoalPlan>.none)
+
+print("\n13) the daily need comes down as you get ahead")
+let big13 = lg(a12, today: "2026-10-04")        // a12: 36,000 before today, 15,000 today
+let short13 = lg(oct.merging(["2026-10-04": 4000]) { $1 }, today: "2026-10-04")
+check("the plan's average on day one", short13?.planPerDay, Optional(10870))
+check("a short day: need stays at today's quota", short13?.perDay, Optional(10832))
+check("…lowered by what the lead is worth per remaining day", short13?.loweredBy, Optional(38))
+check("a day past the quota: lowered further", big13?.loweredBy, Optional(85))
+check("behind: the need is above the plan's average", behind12?.loweredBy, Optional(-198))
+check("day one: nothing lowered yet", day1?.loweredBy, Optional(0))
+check("not shown before the start", before12?.loweredBy, Optional(0))
+check("not shown once finished", done12?.loweredBy, Optional(0))
+check("no dip in the morning", lg(oct.merging(["2026-10-04": 0]) { $1 }, today: "2026-10-04")?.perDay, Optional(10832))
+check("exactly the quota changes nothing", lg(oct.merging(["2026-10-04": 10832]) { $1 }, today: "2026-10-04")?.perDay, Optional(10832))
+var steady13 = true
+var prev13 = Int.max
+for walked in stride(from: 0, through: 60000, by: 250) {
+    let v = lg(oct.merging(["2026-10-04": walked]) { $1 }, today: "2026-10-04")?.perDay ?? -1
+    if v > prev13 { steady13 = false }
+    prev13 = v
+}
+check("more steps today never raises the need", steady13, true)
+let tomorrow13 = StepEngine.project(StepEngine.compute(today: "2026-10-04", counts: a12, peaks: [:],
+                                                       settings: StepSettings(goal: 10000, longGoal: plan12), computedAt: 0, denver),
+                                    to: "2026-10-05", settings: StepSettings(goal: 10000, longGoal: plan12), denver)
+check("midnight after a big day: the same need you saw", tomorrow13.longGoal?.perDay, big13?.perDay)
+let lastDayPlan = LongGoalPlan(target: 100_000, start: "2026-10-01", end: "2026-10-10")
+let lastDay13 = lg(["2026-10-01": 10000, "2026-10-02": 10000, "2026-10-03": 10000, "2026-10-04": 10000, "2026-10-05": 10000,
+                    "2026-10-06": 10000, "2026-10-07": 10000, "2026-10-08": 10000, "2026-10-09": 10000, "2026-10-10": 3000],
+                   today: "2026-10-10", settings: StepSettings(longGoal: lastDayPlan))
+check("last day: needs all that's left", lastDay13?.perDay, Optional(10000))
+check("…one day left", lastDay13?.daysLeft, Optional(1))
 
 print(failures == 0 ? "\nALL PASS" : "\n\(failures) FAILURES")
 exit(failures == 0 ? 0 : 1)

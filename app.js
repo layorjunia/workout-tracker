@@ -548,7 +548,9 @@ function longGoalProgress(plan, today, doneBefore, todaySteps) {
   if (total >= target) return make("reached", total, total - target, 0, left);
   const share = target / n;
   const ahead = doneBefore - share * sinceStart + Math.max(0, todaySteps - share);
-  return make("active", total, roundAway(ahead), Math.ceil((target - doneBefore) / left), left);
+  const remaining = target - doneBefore, quota = remaining / left;
+  const perDay = left > 1 && todaySteps > quota ? Math.ceil((remaining - todaySteps) / (left - 1)) : Math.ceil(quota);
+  return make("active", total, roundAway(ahead), perDay, left);
 }
 
 function longGoalFromState(today = todayISO()) {
@@ -2694,7 +2696,7 @@ function syncLongGoalFields() {
   $("#btn-long-clear")?.classList.toggle("hidden", !plan);
 }
 
-function renderLongGoal(g) {
+function renderLongGoal(g, floor = state.settings.stepGoal || 10000) {
   const wrap = $("#goal-card-wrap"), host = $("#goal-card");
   if (!wrap || !host) return;
   wrap.classList.toggle("hidden", !g);
@@ -2704,7 +2706,7 @@ function renderLongGoal(g) {
   const off = g.phase === "active" && g.aheadBy < 0;
   const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
   const stat = (value, label, cls = "") => `<div class="lg-stat"><strong class="${cls}">${value}</strong><span>${label}</span></div>`;
-  let stats;
+  let stats, need = "";
   if (g.phase === "upcoming") {
     stats = stat(g.startsIn, g.startsIn === 1 ? "day to start" : "days to start") + stat(fmt(g.perDay), "per day") + stat(g.totalDays, "days");
   } else if (g.phase === "reached") {
@@ -2713,13 +2715,24 @@ function renderLongGoal(g) {
     stats = stat(fmt(-g.aheadBy), "short", "bad") + stat(g.totalDays, "days");
   } else {
     stats = stat(fmt(Math.abs(g.aheadBy)), g.aheadBy > 0 ? "ahead" : g.aheadBy < 0 ? "behind" : "on track", on ? "good" : "warn")
-      + stat(fmt(g.perDay), "per day")
       + stat(g.daysLeft, g.daysLeft === 1 ? "day left" : "days left");
+    // What each remaining day needs, how far that has come down from the plan's even
+    // average, and how much further it has to fall to reach the daily goal.
+    const planAvg = Math.ceil(g.target / g.totalDays), lowered = planAvg - g.perDay;
+    const delta = lowered === 0 ? "" : `<span class="lg-delta ${lowered > 0 ? "good" : "warn"}">${lowered > 0 ? "▼" : "▲"} ${fmt(Math.abs(lowered))}</span>`;
+    const span = planAvg - floor, atGoal = g.perDay <= floor;
+    const frac = span > 0 ? (atGoal ? 1 : Math.min(1, Math.max(0, lowered / span))) : null;
+    const meter = frac === null ? "" : `
+      <div class="lg-meter"><em>${fmt(planAvg)}</em>
+        <div class="wk-bar${atGoal ? " good" : ""}"><i style="width:${frac > 0 ? Math.max(2, frac * 100).toFixed(1) : 0}%"></i></div>
+        <em>${fmt(floor)}${atGoal ? " ✓" : ""}</em></div>`;
+    need = `<div class="lg-need"><div class="lg-need-top"><span><strong>${fmt(g.perDay)}</strong> per day</span>${delta}</div>${meter}</div>`;
   }
   host.innerHTML = `
     <div class="lg-head"><strong>🎯 ${fmt(g.target)} steps</strong><span>${longDate(g.start)} – ${longDate(g.end)}</span></div>
     <div class="lg-main"><span class="lg-pct${on ? " good" : ""}">${pct}%</span><span class="lg-count"><strong>${fmt(g.total)}</strong> of ${fmt(g.target)}</span></div>
     <div class="wk-bar lg-bar${on ? " good" : off ? " warn" : ""}"><i style="width:${Math.min(100, g.percent * 100).toFixed(1)}%"></i></div>
+    ${need}
     <div class="lg-stats">${stats}</div>`;
 }
 
@@ -2736,7 +2749,7 @@ function renderSteps() {
   if (stepBridge() && !nativeSteps) { host.innerHTML = ""; renderLongGoal(longGoalFromState()); return; }
 
   const v = stepView();
-  renderLongGoal(v.longGoal);
+  renderLongGoal(v.longGoal, v.goal);
   const tier = streakTier(v.streak);
   const toNext = v.streak > 0 ? 7 - (v.streak % 7) : null;
   const nextTier = streakTier((Math.floor(v.streak / 7) + 1) * 7);

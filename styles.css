@@ -647,6 +647,15 @@ details.setup .setup-list { margin-top: 8px; }
 .lg-bar { flex: none; height: 10px; }
 .lg-bar.good i { background: var(--success); }
 .lg-bar.warn i { background: var(--warn); }
+.lg-need { margin-top: 16px; }
+.lg-need-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; color: var(--text-dim); font-size: 13.5px; }
+.lg-need-top strong { color: var(--text); font-size: 24px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.lg-delta { font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.lg-delta.good { color: var(--success); }
+.lg-delta.warn { color: var(--warn); }
+.lg-meter { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.lg-meter em { font-style: normal; font-size: 11.5px; font-weight: 650; color: var(--text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lg-meter .wk-bar { height: 6px; }
 .lg-stats { display: flex; gap: 8px; margin-top: 14px; }
 .lg-stat { flex: 1; min-width: 0; background: var(--bg-elev-2); border-radius: var(--r-sm); padding: 9px 10px; text-align: center; }
 .lg-stat strong { display: block; font-size: 17px; font-weight: 800; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }

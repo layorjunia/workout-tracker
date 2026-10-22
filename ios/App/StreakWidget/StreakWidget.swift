@@ -103,6 +103,9 @@ struct GoalRow: View {
         }
     }
     var pct: String { "\(Int((min(g.percent, 9.99) * 100).rounded(.down)))%" }
+    /// How far the daily need has come down from the plan's even average.
+    var lowered: Int { g.loweredBy }
+    var loweredText: String { "\(lowered > 0 ? "▼" : "▲")\(fmtGoal(lowered))" }
     var status: String {
         switch g.phase {
         case .upcoming: return "starts in \(g.startsIn)d"
@@ -119,8 +122,12 @@ struct GoalRow: View {
             HStack(spacing: 4) {
                 Text("🎯").font(.system(size: 11))
                 Text(pct).font(.system(size: 12, weight: .heavy))
-                Text(g.phase == .active ? "\(g.aheadBy >= 0 ? "+" : "−")\(fmtGoal(g.aheadBy))" : status)
-                    .font(.system(size: 11, weight: .semibold))
+                if g.phase == .active {
+                    Text("\(fmtGoal(g.perDay))/d").font(.system(size: 11, weight: .semibold))
+                    if lowered != 0 { Text(loweredText).font(.system(size: 10, weight: .heavy)) }
+                } else {
+                    Text(status).font(.system(size: 11, weight: .semibold))
+                }
             }
             .foregroundStyle(tint)
             .lineLimit(1).minimumScaleFactor(0.7)
@@ -138,6 +145,10 @@ struct GoalRow: View {
                 Text(status).font(.system(size: 11, weight: .semibold)).foregroundStyle(tint)
                 if g.phase == .active {
                     Text("· \(fmtGoal(g.perDay))/day").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                    if lowered != 0 {
+                        Text(loweredText).font(.system(size: 11, weight: .heavy))
+                            .foregroundStyle(lowered > 0 ? Color.green : Color.orange)
+                    }
                 }
             }
             .lineLimit(1).minimumScaleFactor(0.8)

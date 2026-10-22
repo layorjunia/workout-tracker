@@ -40,10 +40,15 @@ struct LongGoalProgress: Codable, Equatable {
     var percent: Double     // total / target; 1 = done
     var aheadBy: Int        // against the straight-line plan; negative = behind
                             // (reached/ended: total − target)
-    var perDay: Int         // what each remaining day needs, today included
+    var perDay: Int         // what each remaining day needs to finish on time
     var daysLeft: Int       // today included; 0 once the end date has passed
     var totalDays: Int
     var startsIn: Int       // days until the start; 0 once begun
+
+    /// What each day needed on day one: the plan's even daily average.
+    var planPerDay: Int { Int((Double(target) / Double(max(1, totalDays))).rounded(.up)) }
+    /// How far the daily need has dropped below that average; negative = it has risen.
+    var loweredBy: Int { phase == .active ? planPerDay - perDay : 0 }
 }
 
 struct StepDay: Codable, Equatable {
@@ -170,7 +175,16 @@ enum StepEngine {
         if total >= target { return make(.reached, total: total, ahead: total - target, perDay: 0, left: left) }
         let share = Double(target) / Double(n)
         let ahead = Double(doneBefore) - share * Double(sinceStart) + max(0, Double(todaySteps) - share)
-        let perDay = Int((Double(target - doneBefore) / Double(left)).rounded(.up))
+        // Today's quota holds all day; walking past it lowers what the remaining days
+        // need right away, while a short day is only booked at midnight.
+        let remaining = target - doneBefore
+        let quota = Double(remaining) / Double(left)
+        let perDay: Int
+        if left > 1 && Double(todaySteps) > quota {
+            perDay = Int((Double(remaining - todaySteps) / Double(left - 1)).rounded(.up))
+        } else {
+            perDay = Int(quota.rounded(.up))
+        }
         return make(.active, total: total, ahead: Int(ahead.rounded()), perDay: perDay, left: left)
     }
 
