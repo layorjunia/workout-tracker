@@ -2746,7 +2746,8 @@ function renderSteps() {
   if (calA && !calA.value && state.settings.stepCalApple) calA.value = state.settings.stepCalApple;
   if (calB && !calB.value && state.settings.stepCalActual) calB.value = state.settings.stepCalActual;
   syncLongGoalFields();
-  if (stepBridge() && !nativeSteps) { host.innerHTML = ""; renderLongGoal(longGoalFromState()); return; }
+  // Until the phone has answered, show what the app last knew, dimmed.
+  $("#view-steps")?.classList.toggle("provisional", !!stepBridge() && !nativeSteps);
 
   const v = stepView();
   renderLongGoal(v.longGoal, v.goal);
@@ -3689,7 +3690,7 @@ document.addEventListener("visibilitychange", () => { if (document.hidden) flush
   // If there's an in-progress workout (last one with empty entries from a refresh), revive it
   const inProgress = state.workouts.find(w => w.date === todayISO() && w.entries.length > 0 && w.entries.some(e => e.sets.some(s => s.load === "" && s.reps === "")));
   // Don't auto-revive — make user explicitly start. activeWorkoutId stays null.
-  showView("today");
+  showView("steps");
 }
 
 init();

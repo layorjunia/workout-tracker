@@ -636,6 +636,9 @@ details.setup .setup-list { margin-top: 8px; }
 .wk-goal.hit .wk-bar i { background: var(--success); }
 .wk-goal.hit strong { color: var(--success); }
 
+#steps-card, #goal-card { transition: opacity 0.25s ease; }
+#view-steps.provisional #steps-card, #view-steps.provisional #goal-card { opacity: 0.5; }
+
 /* Long-term step goal */
 .lg-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 14px; }
 .lg-head span { color: var(--text-dim); font-size: 12.5px; white-space: nowrap; }
