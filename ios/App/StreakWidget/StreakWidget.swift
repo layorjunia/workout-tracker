@@ -89,33 +89,30 @@ func fmtGoal(_ n: Int) -> String {
     return fmtSteps(v)
 }
 
-/// The long-term goal as one glanceable line: where you are, whether you're on
-/// the line, and what each remaining day needs.
+/// The long-term goal as one glanceable line: how far along, and the daily
+/// average the remaining days need. That average is the only signal — it comes
+/// down as you walk more and goes up when you walk less.
 struct GoalRow: View {
     let g: LongGoalProgress
     var compact = false
 
-    var tint: Color {
-        switch g.phase {
-        case .reached: return .green
-        case .ended, .upcoming: return .secondary
-        case .active: return g.aheadBy >= 0 ? .green : .orange
-        }
-    }
+    /// Blue while it's being worked on, green once it's done.
+    var barTint: Color { g.phase == .reached ? .green : .blue }
     var pct: String { "\(Int((min(g.percent, 9.99) * 100).rounded(.down)))%" }
-    /// How far the daily need has come down from the plan's even average.
+    /// How far the daily need has moved from the plan's even average.
     var lowered: Int { g.loweredBy }
     var loweredText: String { "\(lowered > 0 ? "▼" : "▲")\(fmtGoal(lowered))" }
+    var loweredColor: Color { lowered > 0 ? .green : .orange }
+    /// Words for the phases that have no daily need to show.
     var status: String {
         switch g.phase {
         case .upcoming: return "starts in \(g.startsIn)d"
         case .reached: return "done ✓"
-        case .ended: return "\(fmtGoal(g.aheadBy)) short"
-        case .active:
-            if g.aheadBy == 0 { return "on track" }
-            return "\(fmtGoal(g.aheadBy)) \(g.aheadBy > 0 ? "ahead" : "behind")"
+        case .ended: return "\(fmtGoal(max(0, g.target - g.total))) short"
+        case .active: return ""
         }
     }
+    var statusColor: Color { g.phase == .reached ? .green : .secondary }
 
     var body: some View {
         if compact {
@@ -123,13 +120,12 @@ struct GoalRow: View {
                 Text("🎯").font(.system(size: 11))
                 Text(pct).font(.system(size: 12, weight: .heavy))
                 if g.phase == .active {
-                    Text("\(fmtGoal(g.perDay))/d").font(.system(size: 11, weight: .semibold))
-                    if lowered != 0 { Text(loweredText).font(.system(size: 10, weight: .heavy)) }
+                    Text("\(fmtGoal(g.perDay))/d").font(.system(size: 11, weight: .heavy))
+                    if lowered != 0 { Text(loweredText).font(.system(size: 10, weight: .heavy)).foregroundStyle(loweredColor) }
                 } else {
-                    Text(status).font(.system(size: 11, weight: .semibold))
+                    Text(status).font(.system(size: 11, weight: .semibold)).foregroundStyle(statusColor)
                 }
             }
-            .foregroundStyle(tint)
             .lineLimit(1).minimumScaleFactor(0.7)
         } else {
             HStack(spacing: 7) {
@@ -137,18 +133,16 @@ struct GoalRow: View {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule().fill(Color.primary.opacity(0.12))
-                        Capsule().fill(tint).frame(width: max(5, geo.size.width * min(1, g.percent)))
+                        Capsule().fill(barTint).frame(width: max(5, geo.size.width * min(1, g.percent)))
                     }
                 }
                 .frame(height: 6)
                 Text(pct).font(.system(size: 12, weight: .heavy))
-                Text(status).font(.system(size: 11, weight: .semibold)).foregroundStyle(tint)
                 if g.phase == .active {
-                    Text("· \(fmtGoal(g.perDay))/day").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
-                    if lowered != 0 {
-                        Text(loweredText).font(.system(size: 11, weight: .heavy))
-                            .foregroundStyle(lowered > 0 ? Color.green : Color.orange)
-                    }
+                    Text("\(fmtGoal(g.perDay))/day").font(.system(size: 12, weight: .heavy))
+                    if lowered != 0 { Text(loweredText).font(.system(size: 11, weight: .heavy)).foregroundStyle(loweredColor) }
+                } else {
+                    Text(status).font(.system(size: 11, weight: .semibold)).foregroundStyle(statusColor)
                 }
             }
             .lineLimit(1).minimumScaleFactor(0.8)

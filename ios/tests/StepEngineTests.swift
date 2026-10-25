@@ -157,18 +157,14 @@ let early = lg(a12, today: "2026-10-04")
 check("phase", early?.phase, Optional(LongGoalProgress.Phase.active))
 check("total includes today", early?.total, Optional(40000))
 check("percent", early?.percent, Optional(0.04))
-check("ahead of the plan through yesterday (short today isn't charged yet)", early?.aheadBy, Optional(3391))
 check("per day from today on", early?.perDay, Optional(10832))
 check("days left, today included", early?.daysLeft, Optional(89))
 check("length", early?.totalDays, Optional(92))
 a12["2026-10-04"] = 15000
-check("a big day today adds only what's past the day's share", lg(a12, today: "2026-10-04")?.aheadBy, Optional(7522))
 check("…and walking past the day's quota lowers the daily need at once", lg(a12, today: "2026-10-04")?.perDay, Optional(10785))
 let behind12 = lg(["2026-10-01": 5000, "2026-10-02": 5000, "2026-10-03": 5000], today: "2026-10-04")
-check("behind", behind12?.aheadBy, Optional(-17609))
 check("…and the daily need rises", behind12?.perDay, Optional(11068))
 let day1 = lg([:], today: "2026-10-01")
-check("first day: on track", day1?.aheadBy, Optional(0))
 check("first day: the plan's daily amount", day1?.perDay, Optional(10870))
 check("first day: all days left", day1?.daysLeft, Optional(92))
 
@@ -187,14 +183,13 @@ over12["2027-01-01"] = 40000
 let done12 = lg(over12, today: "2027-01-02")
 check("finished and reached", done12?.phase, Optional(LongGoalProgress.Phase.reached))
 check("steps after the end never count", done12?.total, Optional(1_840_000))
-check("surplus over the target", done12?.aheadBy, Optional(840_000))
 var short12: [String: Int] = [:]
 for i in 1...31 { short12[String(format: "2026-10-%02d", i)] = 9000 }
 for i in 1...30 { short12[String(format: "2026-11-%02d", i)] = 9000 }
 for i in 1...31 { short12[String(format: "2026-12-%02d", i)] = 9000 }
 let ended12 = lg(short12, today: "2027-01-02")
 check("finished short", ended12?.phase, Optional(LongGoalProgress.Phase.ended))
-check("…how far short", ended12?.aheadBy, Optional(-172_000))
+check("…what was counted", ended12?.total, Optional(828_000))
 check("…no days left", ended12?.daysLeft, Optional(0))
 let early12 = lg(["2026-10-01": 600000, "2026-10-02": 450000], today: "2026-10-02")
 check("reached before the end", early12?.phase, Optional(LongGoalProgress.Phase.reached))
@@ -216,12 +211,13 @@ let base12 = StepEngine.compute(today: "2026-10-04", counts: a12, peaks: [:],
 let next12 = StepEngine.project(base12, to: "2026-10-05", settings: StepSettings(goal: 10000, longGoal: plan12), denver)
 check("next morning keeps everything counted", next12.longGoal?.total, Optional(base12.longGoal!.total))
 check("…one more day gone", next12.longGoal?.daysLeft, Optional(88))
-check("…a day that beat its share: same figure across midnight", next12.longGoal?.aheadBy, base12.longGoal?.aheadBy)
+check("…a day that beat the quota: the same need across midnight", next12.longGoal?.perDay, base12.longGoal?.perDay)
 var shortDay12 = oct; shortDay12["2026-10-04"] = 4000
 let baseShort12 = StepEngine.compute(today: "2026-10-04", counts: shortDay12, peaks: [:],
                                      settings: StepSettings(goal: 10000, longGoal: plan12), computedAt: 0, denver)
 let nextShort12 = StepEngine.project(baseShort12, to: "2026-10-05", settings: StepSettings(goal: 10000, longGoal: plan12), denver)
-check("…a short day is booked at midnight", nextShort12.longGoal?.aheadBy, Optional(-3478))
+check("…a short day is booked at midnight: the need rises", nextShort12.longGoal?.perDay, Optional(10910))
+check("…above the plan's average now", nextShort12.longGoal?.loweredBy, Optional(-40))
 let other12 = StepSettings(goal: 10000, longGoal: LongGoalPlan(target: 2_000_000, start: "2026-10-01", end: "2026-12-31"))
 check("a changed plan isn't carried from the old numbers",
       StepEngine.project(base12, to: "2026-10-05", settings: other12, denver).longGoal, Optional<LongGoalProgress>.none)

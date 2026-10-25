@@ -530,7 +530,6 @@ function streakInfo(today = todayISO()) {
 // ── Long-term step goal ──
 // Same arithmetic as StepEngine.longGoalProgress (Swift), so the browser agrees with the phone.
 const daysBetweenISO = (a, b) => Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000);
-const roundAway = (x) => Math.sign(x) * Math.round(Math.abs(x));
 
 function longGoalProgress(plan, today, doneBefore, todaySteps) {
   if (!plan || !(plan.target > 0) || !plan.start || !plan.end) return null;
@@ -538,19 +537,17 @@ function longGoalProgress(plan, today, doneBefore, todaySteps) {
   if (!(span >= 0)) return null;
   const n = span + 1, target = plan.target;
   const sinceStart = daysBetweenISO(plan.start, today), untilEnd = daysBetweenISO(today, plan.end);
-  const make = (phase, total, aheadBy, perDay, daysLeft, startsIn = 0) => ({
+  const make = (phase, total, perDay, daysLeft, startsIn = 0) => ({
     target, start: plan.start, end: plan.end, phase, total, percent: total / target,
-    aheadBy, perDay, daysLeft, totalDays: n, startsIn,
+    perDay, daysLeft, totalDays: n, startsIn,
   });
-  if (sinceStart < 0) return make("upcoming", 0, 0, Math.ceil(target / n), n, -sinceStart);
-  if (untilEnd < 0) return make(doneBefore >= target ? "reached" : "ended", doneBefore, doneBefore - target, 0, 0);
+  if (sinceStart < 0) return make("upcoming", 0, Math.ceil(target / n), n, -sinceStart);
+  if (untilEnd < 0) return make(doneBefore >= target ? "reached" : "ended", doneBefore, 0, 0);
   const left = n - sinceStart, total = doneBefore + todaySteps;
-  if (total >= target) return make("reached", total, total - target, 0, left);
-  const share = target / n;
-  const ahead = doneBefore - share * sinceStart + Math.max(0, todaySteps - share);
+  if (total >= target) return make("reached", total, 0, left);
   const remaining = target - doneBefore, quota = remaining / left;
   const perDay = left > 1 && todaySteps > quota ? Math.ceil((remaining - todaySteps) / (left - 1)) : Math.ceil(quota);
-  return make("active", total, roundAway(ahead), perDay, left);
+  return make("active", total, perDay, left);
 }
 
 function longGoalFromState(today = todayISO()) {
@@ -2702,20 +2699,17 @@ function renderLongGoal(g, floor = state.settings.stepGoal || 10000) {
   wrap.classList.toggle("hidden", !g);
   if (!g) { host.innerHTML = ""; return; }
   const pct = Math.floor(Math.min(g.percent, 9.99) * 100);
-  const on = g.phase === "reached" || (g.phase === "active" && g.aheadBy >= 0);
-  const off = g.phase === "active" && g.aheadBy < 0;
+  const done = g.phase === "reached";
   const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
   const stat = (value, label, cls = "") => `<div class="lg-stat"><strong class="${cls}">${value}</strong><span>${label}</span></div>`;
-  let stats, need = "";
+  let stats = "", need = "";
   if (g.phase === "upcoming") {
     stats = stat(g.startsIn, g.startsIn === 1 ? "day to start" : "days to start") + stat(fmt(g.perDay), "per day") + stat(g.totalDays, "days");
   } else if (g.phase === "reached") {
-    stats = stat(fmt(g.aheadBy), "over", "good") + (g.daysLeft ? stat(g.daysLeft, g.daysLeft === 1 ? "day left" : "days left") : "");
+    stats = stat(fmt(g.total - g.target), "over", "good") + (g.daysLeft ? stat(g.daysLeft, g.daysLeft === 1 ? "day left" : "days left") : "");
   } else if (g.phase === "ended") {
-    stats = stat(fmt(-g.aheadBy), "short", "bad") + stat(g.totalDays, "days");
+    stats = stat(fmt(g.target - g.total), "short", "bad") + stat(g.totalDays, "days");
   } else {
-    stats = stat(fmt(Math.abs(g.aheadBy)), g.aheadBy > 0 ? "ahead" : g.aheadBy < 0 ? "behind" : "on track", on ? "good" : "warn")
-      + stat(g.daysLeft, g.daysLeft === 1 ? "day left" : "days left");
     // What each remaining day needs, how far that has come down from the plan's even
     // average, and how much further it has to fall to reach the daily goal.
     const planAvg = Math.ceil(g.target / g.totalDays), lowered = planAvg - g.perDay;
@@ -2726,14 +2720,14 @@ function renderLongGoal(g, floor = state.settings.stepGoal || 10000) {
       <div class="lg-meter"><em>${fmt(planAvg)}</em>
         <div class="wk-bar${atGoal ? " good" : ""}"><i style="width:${frac > 0 ? Math.max(2, frac * 100).toFixed(1) : 0}%"></i></div>
         <em>${fmt(floor)}${atGoal ? " ✓" : ""}</em></div>`;
-    need = `<div class="lg-need"><div class="lg-need-top"><span><strong>${fmt(g.perDay)}</strong> per day</span>${delta}</div>${meter}</div>`;
+    need = `<div class="lg-need"><div class="lg-need-top"><span><strong>${fmt(g.perDay)}</strong> per day <em>· ${plural(g.daysLeft, "day")} left</em></span>${delta}</div>${meter}</div>`;
   }
   host.innerHTML = `
     <div class="lg-head"><strong>🎯 ${fmt(g.target)} steps</strong><span>${longDate(g.start)} – ${longDate(g.end)}</span></div>
-    <div class="lg-main"><span class="lg-pct${on ? " good" : ""}">${pct}%</span><span class="lg-count"><strong>${fmt(g.total)}</strong> of ${fmt(g.target)}</span></div>
-    <div class="wk-bar lg-bar${on ? " good" : off ? " warn" : ""}"><i style="width:${Math.min(100, g.percent * 100).toFixed(1)}%"></i></div>
+    <div class="lg-main"><span class="lg-pct${done ? " good" : ""}">${pct}%</span><span class="lg-count"><strong>${fmt(g.total)}</strong> of ${fmt(g.target)}</span></div>
+    <div class="wk-bar lg-bar${done ? " good" : ""}"><i style="width:${Math.min(100, g.percent * 100).toFixed(1)}%"></i></div>
     ${need}
-    <div class="lg-stats">${stats}</div>`;
+    ${stats ? `<div class="lg-stats">${stats}</div>` : ""}`;
 }
 
 function renderSteps() {

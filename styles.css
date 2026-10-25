@@ -649,10 +649,10 @@ details.setup .setup-list { margin-top: 8px; }
 .lg-count strong { color: var(--text); }
 .lg-bar { flex: none; height: 10px; }
 .lg-bar.good i { background: var(--success); }
-.lg-bar.warn i { background: var(--warn); }
 .lg-need { margin-top: 16px; }
 .lg-need-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; color: var(--text-dim); font-size: 13.5px; }
 .lg-need-top strong { color: var(--text); font-size: 24px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.lg-need-top em { font-style: normal; color: var(--text-faint); }
 .lg-delta { font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .lg-delta.good { color: var(--success); }
 .lg-delta.warn { color: var(--warn); }
@@ -663,7 +663,6 @@ details.setup .setup-list { margin-top: 8px; }
 .lg-stat { flex: 1; min-width: 0; background: var(--bg-elev-2); border-radius: var(--r-sm); padding: 9px 10px; text-align: center; }
 .lg-stat strong { display: block; font-size: 17px; font-weight: 800; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
 .lg-stat strong.good { color: var(--success); }
-.lg-stat strong.warn { color: var(--warn); }
 .lg-stat strong.bad { color: var(--danger); }
 .lg-stat span { display: block; margin-top: 2px; font-size: 11px; color: var(--text-dim); font-weight: 600; }
 

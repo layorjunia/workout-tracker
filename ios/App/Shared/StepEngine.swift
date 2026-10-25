@@ -38,8 +38,6 @@ struct LongGoalProgress: Codable, Equatable {
     var phase: Phase
     var total: Int          // steps counted from the start through today
     var percent: Double     // total / target; 1 = done
-    var aheadBy: Int        // against the straight-line plan; negative = behind
-                            // (reached/ended: total − target)
     var perDay: Int         // what each remaining day needs to finish on time
     var daysLeft: Int       // today included; 0 once the end date has passed
     var totalDays: Int
@@ -145,9 +143,9 @@ enum StepEngine {
 
     /// Progress toward a step total between two dates (both inclusive).
     /// `doneBefore` is every counted step before today inside the range and
-    /// `todaySteps` is today's. Today only adds to "ahead" once it passes the
-    /// plan's daily share, so the figure doesn't swing negative every morning;
-    /// a short day is booked at midnight.
+    /// `todaySteps` is today's. The daily need is the one signal: it holds at
+    /// today's quota all day, drops as soon as today passes it, and a short day
+    /// is only booked at midnight, so it never creeps up during the morning.
     static func longGoalProgress(_ plan: LongGoalPlan, today: String, doneBefore: Int, todaySteps: Int,
                                  _ cal: Calendar) -> LongGoalProgress? {
         guard plan.target > 0,
@@ -156,27 +154,22 @@ enum StepEngine {
               let untilEnd = daysBetween(today, plan.end, cal) else { return nil }
         let n = span + 1
         let target = plan.target
-        func make(_ phase: LongGoalProgress.Phase, total: Int, ahead: Int, perDay: Int,
+        func make(_ phase: LongGoalProgress.Phase, total: Int, perDay: Int,
                   left: Int, startsIn: Int = 0) -> LongGoalProgress {
             LongGoalProgress(target: target, start: plan.start, end: plan.end, phase: phase, total: total,
-                             percent: Double(total) / Double(target), aheadBy: ahead, perDay: perDay,
+                             percent: Double(total) / Double(target), perDay: perDay,
                              daysLeft: left, totalDays: n, startsIn: startsIn)
         }
         if sinceStart < 0 {
-            return make(.upcoming, total: 0, ahead: 0, perDay: Int((Double(target) / Double(n)).rounded(.up)),
+            return make(.upcoming, total: 0, perDay: Int((Double(target) / Double(n)).rounded(.up)),
                         left: n, startsIn: -sinceStart)
         }
         if untilEnd < 0 {
-            return make(doneBefore >= target ? .reached : .ended, total: doneBefore,
-                        ahead: doneBefore - target, perDay: 0, left: 0)
+            return make(doneBefore >= target ? .reached : .ended, total: doneBefore, perDay: 0, left: 0)
         }
         let left = n - sinceStart
         let total = doneBefore + todaySteps
-        if total >= target { return make(.reached, total: total, ahead: total - target, perDay: 0, left: left) }
-        let share = Double(target) / Double(n)
-        let ahead = Double(doneBefore) - share * Double(sinceStart) + max(0, Double(todaySteps) - share)
-        // Today's quota holds all day; walking past it lowers what the remaining days
-        // need right away, while a short day is only booked at midnight.
+        if total >= target { return make(.reached, total: total, perDay: 0, left: left) }
         let remaining = target - doneBefore
         let quota = Double(remaining) / Double(left)
         let perDay: Int
@@ -185,7 +178,7 @@ enum StepEngine {
         } else {
             perDay = Int(quota.rounded(.up))
         }
-        return make(.active, total: total, ahead: Int(ahead.rounded()), perDay: perDay, left: left)
+        return make(.active, total: total, perDay: perDay, left: left)
     }
 
     // MARK: Compute

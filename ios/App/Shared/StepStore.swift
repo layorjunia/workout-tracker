@@ -59,7 +59,7 @@ enum StepStore {
 
     static func signature(_ s: StepSummary) -> String {
         let strip = s.last14.suffix(7).map { $0.counts ? "1" : ($0.hasData ? "0" : "-") }.joined()
-        let lg = s.longGoal.map { "\($0.phase.rawValue)/\($0.target)/\(Int($0.percent * 100))/\($0.aheadBy / 100)/\($0.perDay / 100)/\($0.daysLeft)/\($0.startsIn)" } ?? "-"
+        let lg = s.longGoal.map { "\($0.phase.rawValue)/\($0.target)/\(Int($0.percent * 100))/\($0.perDay / 100)/\($0.daysLeft)/\($0.startsIn)" } ?? "-"
         return "\(s.date)|\(s.todaySteps / 100)|\(s.goalMet)|\(s.streak)|\(s.workoutsThisWeek)/\(s.workoutGoal)|\(s.goal)|\(strip)|\(lg)"
     }
 
