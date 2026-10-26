@@ -12,6 +12,7 @@ public class StreakBridgePlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "refresh", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "requestNotifications", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "haptic", returnType: CAPPluginReturnPromise),
     ]
 
     static let notifId = "step-goal-reminder"
@@ -54,6 +55,43 @@ public class StreakBridgePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func requestNotifications(_ call: CAPPluginCall) {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
             call.resolve(["granted": granted])
+        }
+    }
+
+    /// A tap from the phone's haptic engine, so a goal landing is something you feel.
+    /// "tick" is a light tap per rep logged; "success" and "burst" are for medals and rings.
+    @objc func haptic(_ call: CAPPluginCall) {
+        let style = call.getString("style") ?? "tick"
+        DispatchQueue.main.async { Self.play(style) }
+        call.resolve()
+    }
+
+    private static func play(_ style: String) {
+        func impact(_ s: UIImpactFeedbackGenerator.FeedbackStyle, after delay: Double = 0, intensity: CGFloat = 1) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                let g = UIImpactFeedbackGenerator(style: s)
+                g.prepare()
+                g.impactOccurred(intensity: intensity)
+            }
+        }
+        func notify(_ t: UINotificationFeedbackGenerator.FeedbackType, after delay: Double = 0) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                let g = UINotificationFeedbackGenerator()
+                g.prepare()
+                g.notificationOccurred(t)
+            }
+        }
+        switch style {
+        case "success":
+            notify(.success)
+        case "burst":   // a firework: the thump, a rolling shimmer, then the success tap
+            impact(.heavy)
+            impact(.medium, after: 0.09)
+            impact(.light, after: 0.17)
+            impact(.light, after: 0.24)
+            notify(.success, after: 0.36)
+        default:
+            impact(.light, intensity: 0.8)
         }
     }
 

@@ -89,6 +89,30 @@ func fmtGoal(_ n: Int) -> String {
     return fmtSteps(v)
 }
 
+/// Ten medals, one per 10%: the bar is ten segments that fill in turn.
+struct MedalBar: View {
+    let fraction: Double
+    let tint: Color
+
+    var body: some View {
+        GeometryReader { geo in
+            let gap: CGFloat = 2
+            let w = (geo.size.width - gap * 9) / 10
+            HStack(spacing: gap) {
+                ForEach(0..<10, id: \.self) { i in
+                    let f = max(0, min(1, fraction * 10 - Double(i)))
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 2).fill(Color.primary.opacity(0.12))
+                        RoundedRectangle(cornerRadius: 2).fill(tint).frame(width: f > 0 ? max(2, w * f) : 0)
+                    }
+                    .frame(width: w)
+                }
+            }
+        }
+        .frame(height: 6)
+    }
+}
+
 /// The long-term goal as one glanceable line: how far along, and the daily
 /// average the remaining days need. That average is the only signal — it comes
 /// down as you walk more and goes up when you walk less.
@@ -130,13 +154,7 @@ struct GoalRow: View {
         } else {
             HStack(spacing: 7) {
                 Text("🎯").font(.system(size: 12))
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.primary.opacity(0.12))
-                        Capsule().fill(barTint).frame(width: max(5, geo.size.width * min(1, g.percent)))
-                    }
-                }
-                .frame(height: 6)
+                MedalBar(fraction: min(1, g.percent), tint: barTint)
                 Text(pct).font(.system(size: 12, weight: .heavy))
                 if g.phase == .active {
                     Text("\(fmtGoal(g.perDay))/day").font(.system(size: 12, weight: .heavy))

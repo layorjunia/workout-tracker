@@ -606,6 +606,7 @@ function refreshSteps() {
     }
     renderSteps();
     renderGoalsIfIdle();
+    checkCheers();
   })();
   return stepsInFlight;
 }
@@ -742,6 +743,7 @@ function saveState() {
     lastSavedAt = now;
     updateSavedIndicator();
     window.WorkoutSync?.scheduleCloudPush?.();   // no-op when signed out
+    scheduleCheers();
   } catch (e) {
     console.error("saveState failed", e);
     const ind = document.getElementById("saved-indicator");
@@ -835,6 +837,10 @@ function mergeStates(local, remote) {
     .filter(t => liveGoals.has(t.goalId) && !(tTomb[t.id] && tTomb[t.id] >= (t.updatedAt || 0)))
     .sort((a, b) => (a.at || 0) - (b.at || 0) || String(a.id).localeCompare(String(b.id)));
   out.goalsSeeded = !!(local.goalsSeeded || remote.goalsSeeded);
+  // Cheers: each goal's note is only rewritten by the device that saw the change, so the newest wins
+  const notes = { ...(remote.cheers || {}) };
+  for (const [k, v] of Object.entries(local.cheers || {})) if (!notes[k] || (v.at || 0) >= (notes[k].at || 0)) notes[k] = v;
+  out.cheers = notes;
 
   // Exercises are displayed name-sorted, so a canonical order here costs nothing
   // and makes the merge order-independent. Templates keep their user-defined
@@ -1041,6 +1047,7 @@ function migrate(s) {
   s.tallies ??= [];              // what was done toward them: { id, goalId, date, n, at, updatedAt }
   s.deletedGoals ??= {};
   s.deletedTallies ??= {};
+  s.cheers ??= {};               // how far each goal has already been cheered: { lvl, ring, best, at }
   if (!s.goalsSeeded) {          // first run with Goals: Jacob's three, counting from today to year end
     const today = todayISO();
     for (const g of REP_GOAL_SEEDS)
@@ -1269,10 +1276,11 @@ function showView(name) {
   if (name === "library") renderLibrary();
   if (name === "templates") renderTemplates();
   if (name === "health") renderHealth();
-  if (name === "goals") { renderGoals(); refreshSteps().then(renderGoalsIfIdle); }
+  if (name === "goals") { forgetFx("goals"); renderGoals(); refreshSteps().then(renderGoalsIfIdle); }
   clearInterval(stepsTimer);
   stepsTimer = null;
   if (name === "steps") {
+    forgetFx("steps");
     renderSteps();
     refreshSteps();
     stepsTimer = setInterval(() => { if (!document.hidden) refreshSteps(); }, 60 * 1000);
@@ -2733,15 +2741,398 @@ function syncLongGoalFields() {
   $("#btn-long-clear")?.classList.toggle("hidden", !plan);
 }
 
+/* ───────── Cheers ─────────
+   What makes the goals feel like something: a medal every 10%, a ring for each goal's day,
+   and a little noise when one lands. What's shown is worked out from the goal figures; the
+   only thing stored is how far each goal has already been cheered (state.cheers), so a
+   medal is celebrated once, however many devices see it. */
+const reducedMotion = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+const nativeBridge = () => (window.Capacitor?.isNativePlatform?.() ? window.Capacitor?.Plugins?.StreakBridge : null);
+
+// A tap from the phone's haptic engine. "tick" for a rep logged, "success" and "burst" for
+// rings and medals.
+let nativeHaptics = true, tapSwitch;
+function haptic(kind = "tick") {
+  const bridge = nativeBridge();
+  if (bridge && nativeHaptics) {
+    try { bridge.haptic?.({ style: kind })?.catch?.(() => { nativeHaptics = false; }); } catch { nativeHaptics = false; }
+    return;
+  }
+  // An older build has no haptic method; iOS Safari ticks when a switch-styled checkbox is toggled
+  if (!/iPhone|iPad/.test(navigator.userAgent)) return;
+  try {
+    if (!tapSwitch) {
+      tapSwitch = document.createElement("label");
+      tapSwitch.setAttribute("aria-hidden", "true");
+      tapSwitch.style.cssText = "position:fixed;left:-99px;top:-99px;width:1px;height:1px;opacity:0;pointer-events:none";
+      tapSwitch.innerHTML = '<input type="checkbox" switch tabindex="-1">';
+      document.body.appendChild(tapSwitch);
+    }
+    tapSwitch.click();
+  } catch {}
+}
+
+const resolveColor = (c) => {
+  const m = /^var\((--[\w-]+)\)$/.exec(c || "");
+  return m ? getComputedStyle(document.documentElement).getPropertyValue(m[1]).trim() : c;
+};
+
+const confetti = (() => {
+  const COLORS = ["#5b8cff", "#3ddc97", "#ffb454", "#ff7a59", "#b58cff", "#38c7d8", "#ff7eb6"];
+  let cv = null, ctx = null, parts = [], raf = 0, last = 0;
+  function step(dt) {
+    for (const p of parts) {
+      p.t += dt;
+      p.vx *= Math.exp(-1.6 * dt);
+      p.vy = p.vy * Math.exp(-0.9 * dt) + 1500 * dt;     // gravity wins as the burst slows
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.rot += p.vr * dt;
+    }
+    parts = parts.filter(p => p.t < p.ttl && p.y < innerHeight + 30);
+  }
+  function draw() {
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    for (const p of parts) {
+      const fade = p.t > p.ttl * 0.7 ? 1 - (p.t - p.ttl * 0.7) / (p.ttl * 0.3) : 1;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, fade);
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.scale(1, Math.cos(p.t * p.flip));              // paper turning over
+      ctx.fillStyle = p.color;
+      if (p.round) { ctx.beginPath(); ctx.arc(0, 0, p.w / 2, 0, 6.2832); ctx.fill(); }
+      else ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    }
+  }
+  function loop(now) {
+    const dt = Math.min(0.05, (now - last) / 1000 || 0.016);
+    last = now;
+    step(dt); draw();
+    if (parts.length) raf = requestAnimationFrame(loop);
+    else { raf = 0; cv.style.display = "none"; }
+  }
+  function burst({ x = innerWidth / 2, y = innerHeight * 0.4, count = 70, power = 1, aim = -Math.PI / 2, spread = 2, colors = COLORS } = {}) {
+    if (reducedMotion()) return;
+    if (!cv) {
+      cv = document.createElement("canvas");
+      cv.className = "confetti";
+      cv.setAttribute("aria-hidden", "true");
+      document.body.appendChild(cv);
+      ctx = cv.getContext("2d");
+    }
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = Math.round(innerWidth * dpr); cv.height = Math.round(innerHeight * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cv.style.display = "block";
+    for (let i = 0; i < count; i++) {
+      const a = aim + (Math.random() - 0.5) * spread, v = (380 + Math.random() * 620) * power;
+      parts.push({
+        x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 14,
+        t: 0, ttl: 1.8 + Math.random() * 1.1, w: 6 + Math.random() * 6, h: 4 + Math.random() * 6,
+        flip: 6 + Math.random() * 10, round: Math.random() < 0.25, color: colors[(Math.random() * colors.length) | 0],
+      });
+    }
+    if (!raf) { last = performance.now(); raf = requestAnimationFrame(loop); }
+  }
+  return { burst, step, draw, COLORS, get live() { return parts.length; } };
+})();
+
+let cheerTimer;
+function showCheer({ emoji, title, sub, big }) {
+  let el = $("#cheer");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "cheer";
+    el.className = "cheer";
+    el.setAttribute("role", "status");
+    el.setAttribute("aria-live", "polite");
+    el.innerHTML = '<span class="cheer-emoji"></span><div><strong></strong><span class="cheer-sub"></span></div>';
+    el.addEventListener("click", () => el.classList.remove("show"));
+    document.body.appendChild(el);
+  }
+  el.querySelector(".cheer-emoji").textContent = emoji;
+  el.querySelector("strong").textContent = title;
+  el.querySelector(".cheer-sub").textContent = sub || "";
+  el.classList.toggle("big", !!big);
+  el.classList.remove("show"); void el.offsetWidth; el.classList.add("show");   // restart if one follows another
+  clearTimeout(cheerTimer);
+  cheerTimer = setTimeout(() => el.classList.remove("show"), big ? 4200 : 3000);
+}
+
+// "+20" rising off the button that was tapped
+function floatText(text, rect, color) {
+  if (reducedMotion() || !rect) return;
+  const el = document.createElement("span");
+  el.className = "float-n";
+  el.textContent = text;
+  el.style.cssText = `left:${rect.left + rect.width / 2}px;top:${rect.top}px;color:${color || "var(--accent)"}`;
+  document.body.appendChild(el);
+  el.animate?.([
+    { transform: "translate(-50%, 0) scale(0.7)", opacity: 0 },
+    { transform: "translate(-50%, -24px) scale(1.15)", opacity: 1, offset: 0.25 },
+    { transform: "translate(-50%, -80px) scale(1)", opacity: 0 },
+  ], { duration: 950, easing: "cubic-bezier(.2,.7,.3,1)" });
+  setTimeout(() => el.remove(), 1100);
+}
+
+// What each number, bar and ring showed last time, so a change plays from there and a card
+// seen for the first time fills from empty.
+const fxSeen = new Map();
+const painted = new Map(), busy = new Map(), waiting = new Map();
+const FX_HOSTS = { goals: "#goals-list", steps: "#goal-card" };
+// Opening a tab starts its numbers over from empty
+const forgetFx = (surface) => {
+  for (const k of [...fxSeen.keys()]) if (k.startsWith(surface + "|")) fxSeen.delete(k);
+  const host = $(FX_HOSTS[surface]);
+  painted.delete(host); busy.delete(host); waiting.delete(host);
+};
+// Redraws a host only if its markup changed. A refresh that lands while the numbers are still
+// counting up (`auto`) is drawn once they've landed, rather than cutting them short.
+function paint(host, html, auto = false) {
+  const wait = (busy.get(host) || 0) - performance.now();
+  if (auto && wait > 0) {
+    if (!waiting.has(host)) setTimeout(() => { const h = waiting.get(host); waiting.delete(host); if (h != null) paint(host, h); }, wait + 30);
+    waiting.set(host, html);
+    return false;
+  }
+  waiting.delete(host);
+  if (painted.get(host) === html && host.firstChild) return false;
+  painted.set(host, html);
+  host.innerHTML = html;
+  busy.set(host, playFx(host) ? performance.now() + 1100 : 0);
+  return true;
+}
+const segPct = (f, i) => Math.round(Math.max(0, Math.min(1, f - i)) * 1000) / 10;
+const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+
+function rollNumber(el, from, to) {
+  const text = el.dataset.fmt === "pct" ? (v) => `${v}%` : (v) => fmt(v);
+  const ms = 700, t0 = performance.now();
+  const tick = (now) => {
+    if (!el.isConnected) return;
+    const t = Math.min(1, (now - t0) / ms);
+    el.textContent = text(t < 1 ? Math.round(from + (to - from) * easeOut(t)) : to);
+    if (t < 1) requestAnimationFrame(tick);
+  };
+  el.textContent = text(from);
+  requestAnimationFrame(tick);
+  setTimeout(() => { el.textContent = text(to); }, ms + 300);   // land on the right number even if frames were skipped
+}
+
+// The markup always carries the final state; this plays it forward from what was seen before.
+function playFx(root) {
+  if (!root) return false;
+  let moved = false;
+  const calm = reducedMotion();
+  const seen = (el, to) => { const from = fxSeen.get(el.dataset.rk) ?? 0; fxSeen.set(el.dataset.rk, to); return calm ? to : from; };
+  root.querySelectorAll("[data-roll]").forEach(el => {
+    const to = Number(el.dataset.roll), from = seen(el, to);
+    if (from !== to) { rollNumber(el, from, to); moved = true; }
+  });
+  root.querySelectorAll("[data-fill]").forEach(el => {                 // medal bars: "3.4" of 10 segments
+    const to = Number(el.dataset.fill), from = seen(el, to);
+    if (from === to) return;
+    moved = true;
+    const segs = [...el.children], won = [];
+    segs.forEach((s, i) => {
+      s.style.transition = "none";
+      s.style.setProperty("--f", segPct(from, i) + "%");
+      if (to > from && i >= Math.floor(from) && i < Math.floor(to)) { s.classList.remove("full"); won.push(i); }
+    });
+    void el.offsetWidth;
+    segs.forEach((s, i) => {
+      s.style.transition = "";
+      s.style.setProperty("--d", Math.max(0, i - Math.floor(from)) * 0.1 + "s");
+      s.style.setProperty("--f", segPct(to, i) + "%");
+    });
+    for (const i of won) setTimeout(() => segs[i].classList.add("full", "pop"), (i - Math.floor(from)) * 100 + 450);
+  });
+  root.querySelectorAll("[data-dial]").forEach(el => {                 // rings
+    const to = Number(el.dataset.dial), from = seen(el, to);
+    if (from === to) return;
+    moved = true;
+    const C = Number(el.getAttribute("stroke-dasharray"));
+    el.style.transition = "none";
+    el.style.strokeDashoffset = C * (1 - from);
+    void el.getBoundingClientRect();
+    el.style.transition = "";
+    el.style.strokeDashoffset = C * (1 - to);
+  });
+  return moved;
+}
+
+// ── Medals: one every 10% ──
+const MEDAL_LINES = ["", "On the board", "Rolling", "In the groove", "Closing on halfway", "Halfway there", "Past the hump", "Home stretch", "Nearly there", "So close", "Done"];
+const medalEmoji = (lvl) => lvl >= 10 ? "🏆" : lvl === 5 ? "🥇" : "🏅";
+const medalLevel = (g) => g && g.target > 0 ? Math.max(0, Math.min(10, Math.floor(g.total * 10 / g.target))) : 0;
+
+function nextMedal(g) {
+  const lvl = medalLevel(g);
+  if (lvl >= 10) return null;
+  const at = Math.ceil(g.target * (lvl + 1) / 10 - 1e-9);
+  return { pct: (lvl + 1) * 10, at, toGo: Math.max(0, at - g.total) };
+}
+
+// What today has to bring, held steady all day: the remaining days share what was left this morning.
+function dayQuota(g, todayN) {
+  if (!g || g.phase !== "active") return 0;
+  const before = Math.max(0, g.total - todayN);
+  return Math.max(1, Math.ceil((g.target - before) / g.daysLeft - 1e-9));
+}
+
+// The biggest day so far; `before` is the best of the days that came earlier than today.
+function bestDay(days, today) {
+  let n = 0, date = "", before = 0, prior = 0;
+  for (const [d, v] of days) {
+    if (d > today || !(v > 0)) continue;
+    if (v > n || (v === n && d > date)) { n = v; date = d; }
+    if (d < today) { before = Math.max(before, v); prior++; }
+  }
+  return { n, date, before, prior };
+}
+
+const REP_LOOKS = { "goal-pushups": ["💪", "var(--c-cardio)"], "goal-pullups": ["🧗", "var(--c-timed)"], "goal-squats": ["🦵", "var(--c-bodyweight)"] };
+const SPARE_COLORS = ["var(--warn)", "#ff7eb6", "var(--success)", "var(--c-bodyweight)", "var(--c-timed)", "var(--c-cardio)"];
+function repLook(goal) {
+  if (REP_LOOKS[goal.id]) return REP_LOOKS[goal.id];
+  let h = 0;
+  for (const ch of String(goal.id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return ["🎯", SPARE_COLORS[h % SPARE_COLORS.length]];
+}
+
+function stepDays(plan, today, todaySteps) {
+  const days = new Map();
+  for (let d = plan.start, i = 0; d < today && d <= plan.end && i < 800; d = addDaysISO(d, 1), i++) {
+    const n = calSteps(stepsFor(d));
+    if (n) days.set(d, n);
+  }
+  if (todaySteps > 0 && today >= plan.start && today <= plan.end) days.set(today, todaySteps);
+  return days;
+}
+
+// Every goal as one record: its figures, today's count and the days behind them.
+function goalSnapshots(today = todayISO()) {
+  const out = [];
+  const v = stepView(), plan = state.settings.stepLongGoal;
+  if (v.longGoal && plan) {
+    out.push({
+      key: `steps:${plan.target}:${plan.start}:${plan.end}`, card: "steps", name: "Steps", emoji: "👣", color: "var(--accent)",
+      g: v.longGoal, todayN: v.todaySteps || 0, days: stepDays(plan, today, v.todaySteps || 0),
+      provisional: !!stepBridge() && !nativeSteps,           // the phone hasn't answered yet
+    });
+  }
+  for (const goal of state.goals) {
+    const r = repGoalView(goal, today);
+    if (!r.g) continue;
+    const [emoji, color] = repLook(goal);
+    out.push({ key: goal.id, card: goal.id, name: goal.name, emoji, color, g: r.g, todayN: r.todayN, days: r.days });
+  }
+  return out;
+}
+
+// ── Noticing: medals earned, rings closed, best days ──
+// state.cheers[key] remembers what each goal was last cheered for. A goal seen for the first
+// time is only noted down, so nothing already done gets celebrated after the fact.
+let cheersTimer = 0;
+function scheduleCheers(ms = 1200) {
+  clearTimeout(cheersTimer);
+  cheersTimer = setTimeout(checkCheers, ms);
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) scheduleCheers(800); });
+
+const medalEvent = (s, lvl) => ({
+  weight: lvl === 10 ? 6 : lvl === 5 ? 5 : 3, s, emoji: medalEmoji(lvl),
+  title: lvl === 10 ? `${s.name} complete` : lvl === 5 ? `${s.name} halfway` : `${s.name} ${lvl * 10}%`,
+  sub: `${MEDAL_LINES[lvl]} · ${fmt(s.g.total)} of ${fmt(s.g.target)}`,
+  short: `${s.name} ${lvl * 10}%`,
+});
+const ringEvent = (s) => ({ weight: 1, s, emoji: s.emoji, title: `${s.name} ring closed`, sub: `${fmt(s.todayN)} today`, short: `${s.name} ring` });
+const bestEvent = (s, b) => ({ weight: 2, s, emoji: "⭐", title: "New best day", sub: `${s.name} · ${fmt(b.n)}, was ${fmt(b.before)}`, short: `${s.name} best day` });
+const dayEvent = (rings) => ({ weight: 4, s: null, emoji: "🎉", title: "All rings closed", sub: `${rings} of ${rings} today`, short: "all rings" });
+
+function checkCheers() {
+  clearTimeout(cheersTimer);
+  if (document.hidden) return [];
+  const today = todayISO(), now = Date.now();
+  const notes = (state.cheers ||= {});
+  const events = [];
+  let changed = false, rings = 0, closedRings = 0;
+  const touch = (n) => { n.at = now; changed = true; };
+  for (const s of goalSnapshots(today)) {
+    if (s.provisional) continue;
+    const lvl = medalLevel(s.g), quota = dayQuota(s.g, s.todayN);
+    const closed = quota > 0 && s.todayN >= quota;
+    if (quota > 0) { rings++; if (closed) closedRings++; }
+    const best = bestDay(s.days, today);
+    const record = best.date === today && best.n > best.before && best.before > 0 && best.prior >= 3;
+    const n = notes[s.key];
+    if (!n) { notes[s.key] = { lvl, ring: closed ? today : "", best: record ? today : "", at: now }; changed = true; continue; }
+    if (lvl > n.lvl) events.push(medalEvent(s, lvl));
+    if (lvl !== n.lvl) { n.lvl = lvl; touch(n); }
+    if (closed && n.ring !== today) { events.push(ringEvent(s)); n.ring = today; touch(n); }
+    else if (!closed && n.ring === today) { n.ring = ""; touch(n); }
+    if (record && n.best !== today) { events.push(bestEvent(s, best)); n.best = today; touch(n); }
+  }
+  const allClosed = rings >= 2 && closedRings === rings, day = notes.day;
+  if (!day) { notes.day = { ring: allClosed ? today : "", at: now }; changed = true; }
+  else if (allClosed && day.ring !== today) { events.push(dayEvent(rings)); day.ring = today; touch(day); }
+  else if (!allClosed && day.ring === today) { day.ring = ""; touch(day); }
+  if (changed) saveState();
+  cheer(events);
+  return events;
+}
+
+// Where a celebration should burst from: the thing that earned it, if it's on screen
+function cheerSpot(ev) {
+  const at = (el) => { const r = el?.getBoundingClientRect(); return r && r.width ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null; };
+  const el = !ev.s ? null
+    : ev.weight === 1 ? $(`#view-goals.active [data-ring="${ev.s.card}"] .td-dial`)
+    : $(`#view-goals.active [data-goal="${ev.s.card}"] .mb`) || (ev.s.card === "steps" ? $("#view-steps.active #goal-card .mb") : null);
+  return at(el) || { x: innerWidth / 2, y: innerHeight * 0.4 };
+}
+
+function cheer(events) {
+  if (!events.length) return;
+  events.sort((a, b) => b.weight - a.weight);
+  const top = events[0], big = top.weight >= 4;
+  const extra = events.slice(1).map(e => e.short).join(" · ");
+  showCheer({ emoji: top.emoji, title: top.title, sub: [top.sub, extra].filter(Boolean).join(" · "), big });
+  haptic(big ? "burst" : "success");
+  const colors = [resolveColor(top.s?.color), ...confetti.COLORS].filter(Boolean);
+  if (big) {                                                 // cannons from both edges
+    const n = top.weight === 6 ? 110 : top.weight === 5 ? 80 : 60;
+    confetti.burst({ x: 0, y: innerHeight * 0.62, count: n, power: 1.25, aim: -Math.PI / 2 + 0.7, spread: 0.9, colors });
+    confetti.burst({ x: innerWidth, y: innerHeight * 0.62, count: n, power: 1.25, aim: -Math.PI / 2 - 0.7, spread: 0.9, colors });
+    if (top.weight === 6) setTimeout(() => confetti.burst({ ...cheerSpot(top), count: 100, power: 1.1, spread: 2.6, colors }), 380);
+  } else {
+    confetti.burst({ ...cheerSpot(top), count: top.weight === 3 ? 70 : top.weight === 2 ? 46 : 30, power: top.weight === 3 ? 1 : 0.75, colors });
+  }
+}
+
+// Tapping a percentage plays back the last medal won
+function replayMedal(card) {
+  const s = goalSnapshots().find(x => x.card === card), lvl = s ? medalLevel(s.g) : 0;
+  if (lvl < 1) { haptic("tick"); return; }
+  cheer([medalEvent(s, lvl)]);
+}
+
 // Per-day figures: whole numbers for steps; tenths for rep goals, where 5.2 a day is a
 // different ask from 6. Rounded up, since that's the least that finishes on time.
 const fmtPerDay = (x) => x >= 100 ? fmt(Math.ceil(x - 1e-9)) : fmt(Math.ceil(x * 10 - 1e-9) / 10, 1);
 
 // The card both kinds of goal share. Steps work in whole numbers and have a meter from the
 // plan's starting average down to the daily goal; rep goals work in tenths.
-function goalCardHTML(g, { title, floor = null, decimals = false, todayN = 0 } = {}) {
+function goalCardHTML(g, { title, floor = null, decimals = false, todayN = 0, card = "", surface = "goals", color = "var(--accent)" } = {}) {
   const pct = Math.floor(Math.min(g.percent, 9.99) * 100);
   const done = g.phase === "reached";
+  const rk = (field) => `${surface}|${card}|${field}`;
+  // Ten medals: the bar is ten segments that fill in turn, with the next one named underneath
+  const frac = Math.max(0, Math.min(10, g.total * 10 / g.target)), next = nextMedal(g);
+  const medals = `<div class="mb" style="--c:${done ? "var(--success)" : color}" data-fill="${frac.toFixed(3)}" data-rk="${rk("bar")}">${
+    Array.from({ length: 10 }, (_, i) => `<i${segPct(frac, i) >= 100 ? ' class="full"' : ""} style="--f:${segPct(frac, i)}%;--i:${i}"></i>`).join("")}</div>`;
+  const nextRow = done ? `<div class="mb-next"><span>🏆 <b>All ten medals</b></span></div>`
+    : g.phase === "active" && next ? `<div class="mb-next"><span>🏅 <b>${next.pct}%</b> medal</span><span>${fmt(next.toGo)} to go</span></div>` : "";
   const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
   const stat = (value, label, cls = "") => `<div class="lg-stat"><strong class="${cls}">${value}</strong><span>${label}</span></div>`;
   const perDayText = (x) => decimals ? fmtPerDay(x) : fmt(x);
@@ -2771,8 +3162,9 @@ function goalCardHTML(g, { title, floor = null, decimals = false, todayN = 0 } =
   }
   return `
     <div class="lg-head">${title}<span>${longDate(g.start)} – ${longDate(g.end)}</span></div>
-    <div class="lg-main"><span class="lg-pct${done ? " good" : ""}">${pct}%</span><span class="lg-count"><strong>${fmt(g.total)}</strong> of ${fmt(g.target)}${todayN > 0 ? ` · ${fmt(todayN)} today` : ""}</span></div>
-    <div class="wk-bar lg-bar${done ? " good" : ""}"><i style="width:${Math.min(100, g.percent * 100).toFixed(1)}%"></i></div>
+    <div class="lg-main"><span class="lg-pct${done ? " good" : ""}" data-replay="${card}" data-roll="${pct}" data-fmt="pct" data-rk="${rk("pct")}">${pct}%</span><span class="lg-count"><strong data-roll="${g.total}" data-rk="${rk("total")}">${fmt(g.total)}</strong> of ${fmt(g.target)}${todayN > 0 ? ` · ${fmt(todayN)} today` : ""}</span></div>
+    ${medals}
+    ${nextRow}
     ${need}
     ${stats ? `<div class="lg-stats">${stats}</div>` : ""}`;
 }
@@ -2781,7 +3173,7 @@ function renderLongGoal(g, floor = state.settings.stepGoal || 10000) {
   const wrap = $("#goal-card-wrap"), host = $("#goal-card");
   if (!wrap || !host) return;
   wrap.classList.toggle("hidden", !g);
-  host.innerHTML = g ? goalCardHTML(g, { title: `<strong>🎯 ${fmt(g.target)} steps</strong>`, floor }) : "";
+  paint(host, g ? goalCardHTML(g, { title: `<strong>🎯 ${fmt(g.target)} steps</strong>`, floor, card: "steps", surface: "steps" }) : "", true);
 }
 
 /* ───────── Goals ───────── */
@@ -2820,11 +3212,15 @@ function workoutRepsFor(goal) {
 
 function repGoalView(goal, today = todayISO()) {
   let done = 0, todayN = 0;
-  const count = (date, n) => { if (date < today) done += n; else if (date === today) todayN += n; };
+  const days = new Map();                                // reps per day, tallies and workouts together
+  const count = (date, n) => {
+    days.set(date, (days.get(date) || 0) + n);
+    if (date < today) done += n; else if (date === today) todayN += n;
+  };
   for (const t of state.tallies) if (t.goalId === goal.id && t.date >= goal.start && t.date <= goal.end) count(t.date, t.n);
   const workouts = workoutRepsFor(goal);
   for (const w of workouts) count(w.date, w.n);
-  return { g: longGoalProgress(goal, today, done, todayN), todayN, workouts };
+  return { g: longGoalProgress(goal, today, done, todayN), todayN, workouts, days };
 }
 
 function addTally(goalId, n) {
@@ -2864,11 +3260,12 @@ function repGoalHTML(goal) {
     .sort((a, b) => b.date.localeCompare(a.date) || (b.at || 0) - (a.at || 0));
   const recent = [];                                    // the amounts he uses most recently, as one-tap buttons
   for (const t of mine) { if (!recent.includes(t.n)) recent.push(t.n); if (recent.length === 3) break; }
+  for (const n of [10, 20, 5]) if (recent.length < 3 && !recent.includes(n)) recent.push(n);   // so the first tap is one tap
   const last = mine[0];
   const name = escapeHtml(goal.name);
   const editing = goalEditing === goal.id;
   const showHistory = goalHistoryOpen.has(goal.id);
-  const body = g ? goalCardHTML(g, { title: `<strong>${name}</strong>`, decimals: true, todayN })
+  const body = g ? goalCardHTML(g, { title: `<strong>${name}</strong>`, decimals: true, todayN, card: goal.id, color: repLook(goal)[1] })
                  : `<div class="lg-head"><strong>${name}</strong></div>`;
   const field = (key, label, value, attrs = "") =>
     `<label class="col"><span class="label">${label}</span><input ${attrs} data-gl-field="${key}" data-id="${goal.id}" value="${escapeHtml(value)}"></label>`;
@@ -2909,38 +3306,71 @@ function repGoalHTML(goal) {
     </div>`;
 }
 
-function renderGoals() {
+// Today's rings: one per goal still running, filling toward what today has to bring
+const dialNum = (n) => n >= 10000 ? `${(Math.floor(n / 100) / 10).toString().replace(/\.0$/, "")}k` : fmt(n);
+
+function todayStripHTML(snaps) {
+  const live = snaps.filter(s => dayQuota(s.g, s.todayN) > 0);
+  if (!live.length) return "";
+  const R = 26, C = 2 * Math.PI * R;
+  const closed = live.filter(s => s.todayN >= dayQuota(s.g, s.todayN)).length;
+  const dial = (s) => {
+    const quota = dayQuota(s.g, s.todayN), p = Math.min(1, s.todayN / quota), done = s.todayN >= quota;
+    return `<button type="button" class="td-ring${done ? " closed" : ""}" data-ring="${s.card}" style="--c:${s.color}" aria-label="${escapeHtml(s.name)}: ${fmt(s.todayN)} of ${fmt(quota)} today">
+      <span class="td-dial"><svg viewBox="0 0 64 64" aria-hidden="true"><circle class="bg" cx="32" cy="32" r="${R}"/><circle class="fg${p > 0 ? "" : " zero"}" cx="32" cy="32" r="${R}" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C * (1 - p)).toFixed(1)}" data-dial="${p.toFixed(4)}" data-rk="goals|${s.card}|dial"/></svg><span class="td-num${dialNum(s.todayN).length > 4 ? " long" : ""}">${dialNum(s.todayN)}</span></span>
+      <span class="td-name">${done ? "✓ " : ""}${escapeHtml(s.name)}</span>
+      <span class="td-of${!done && p >= 0.75 ? " near" : ""}">${!done && p >= 0.75 ? `${fmt(quota - s.todayN)} to go` : `of ${fmt(quota)}`}</span>
+    </button>`;
+  };
+  return `<div class="card td-card"><div class="lg-head"><strong>Today</strong><span${closed === live.length ? ' class="all"' : ""}>${closed} of ${live.length}</span></div><div class="td-rings">${live.map(dial).join("")}</div></div>`;
+}
+
+// Each goal's biggest day, as a shelf under the cards
+function recordsHTML(snaps, today = todayISO()) {
+  const rows = snaps.map(s => ({ s, b: bestDay(s.days, today) })).filter(r => r.b.n > 0);
+  if (!rows.length) return "";
+  return `<div class="card rc-card"><div class="lg-head"><strong>🏆 Best days</strong></div>${rows.map(({ s, b }) =>
+    `<div class="rc-row"><span>${s.emoji} ${escapeHtml(s.name)}</span><strong>${fmt(b.n)}</strong><em${b.date === today ? ' class="now"' : ""}>${b.date === today ? "Today" : longDate(b.date)}</em></div>`).join("")}</div>`;
+}
+
+function renderGoals(auto = false) {
   const host = $("#goals-list");
   if (!host) return;
-  const v = stepView();
+  const v = stepView(), snaps = goalSnapshots();
   const steps = v.longGoal
-    ? `<div class="card gl-card">${goalCardHTML(v.longGoal, { title: `<strong>🎯 ${fmt(v.longGoal.target)} steps</strong>`, floor: v.goal })}</div>` : "";
-  host.innerHTML = steps + state.goals.map(repGoalHTML).join("");
+    ? `<div class="card gl-card" data-goal="steps">${goalCardHTML(v.longGoal, { title: `<strong>🎯 ${fmt(v.longGoal.target)} steps</strong>`, floor: v.goal, card: "steps", surface: "goals" })}</div>` : "";
+  paint(host, todayStripHTML(snaps) + steps + state.goals.map(repGoalHTML).join("") + recordsHTML(snaps), auto);
 }
 
 // For refreshes nobody asked for: never redraw under a half-typed number.
 function renderGoalsIfIdle() {
   const host = $("#goals-list");
   if (!host || !$("#view-goals.active") || host.contains(document.activeElement)) return;
-  renderGoals();
+  renderGoals(true);
 }
 
 function bindGoals() {
   const list = $("#goals-list");
   if (!list) return;
-  const add = (goalId, raw) => {
+  const add = (goalId, raw, anchor) => {
     const n = addTally(goalId, raw);
     if (!n) { toast("Enter a number"); return; }
+    const from = (anchor || list.querySelector(`[data-gl-add="${goalId}"]`))?.getBoundingClientRect();
+    haptic("tick");
     renderGoals();
-    toast(`${state.goals.find(g => g.id === goalId).name} +${fmt(n)}`);
+    floatText(`+${fmt(n)}`, from, repLook(state.goals.find(g => g.id === goalId))[1]);
+    checkCheers();
   };
   list.addEventListener("click", (e) => {
+    const replay = e.target.closest("[data-replay]");
+    if (replay) { replayMedal(replay.dataset.replay); return; }
     const b = e.target.closest("button");
     if (!b) return;
     const d = b.dataset;
-    if (d.glAdd) add(d.glAdd, list.querySelector(`[data-gl-input="${d.glAdd}"]`)?.value);
-    else if (d.glQuick) add(d.glQuick, d.n);
-    else if (d.glDel) { deleteTally(d.glDel); renderGoals(); }
+    if (d.ring) { haptic("tick"); list.querySelector(`[data-goal="${d.ring}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }
+    else if (d.glAdd) add(d.glAdd, list.querySelector(`[data-gl-input="${d.glAdd}"]`)?.value, b);
+    else if (d.glQuick) add(d.glQuick, d.n, b);
+    else if (d.glDel) { deleteTally(d.glDel); renderGoals(); checkCheers(); }
     else if (d.glOpen) { activeWorkoutId = d.glOpen; resetInactivityTimer(); showView("today"); }
     else if (d.glCountAdd) {
       openPicker(id => {
@@ -2981,6 +3411,10 @@ function bindGoals() {
     goal.updatedAt = Date.now();
     saveState();
     renderGoals();
+  });
+  $("#goal-card")?.addEventListener("click", (e) => {
+    const replay = e.target.closest("[data-replay]");
+    if (replay) replayMedal(replay.dataset.replay);
   });
   $("#btn-goal-add").onclick = () => {
     const today = todayISO();
