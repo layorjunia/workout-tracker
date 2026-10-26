@@ -1001,10 +1001,12 @@ function defaultState() {
     seedHistoryLoaded: true, // suppress migrate() from ever loading synthetic data
   };
 }
+// `counts` = the logged exercises whose reps add to the goal on their own (matched by name).
+// Leg press, split squats and assisted pull-ups are left out; they can be added per goal.
 const REP_GOAL_SEEDS = [
-  { id: "goal-pushups", name: "Push-ups", target: 1500 },
-  { id: "goal-pullups", name: "Pull-ups", target: 350 },
-  { id: "goal-squats",  name: "Squats",   target: 1500 },
+  { id: "goal-pushups", name: "Push-ups", target: 1500, counts: ["Push-ups"] },
+  { id: "goal-pullups", name: "Pull-ups", target: 350,  counts: ["Pull Ups"] },
+  { id: "goal-squats",  name: "Squats",   target: 1500, counts: ["Squats", "Bodyweight Squats", "Goblet Squats", "Sumo Squat"] },
 ];
 function migrate(s) {
   s.schemaVersion ??= 1;
@@ -1042,9 +1044,11 @@ function migrate(s) {
   if (!s.goalsSeeded) {          // first run with Goals: Jacob's three, counting from today to year end
     const today = todayISO();
     for (const g of REP_GOAL_SEEDS)
-      if (!s.goals.some(x => x.id === g.id)) s.goals.push({ ...g, start: today, end: `${today.slice(0, 4)}-12-31`, updatedAt: 0 });
+      if (!s.goals.some(x => x.id === g.id)) s.goals.push({ ...g, counts: [...g.counts], start: today, end: `${today.slice(0, 4)}-12-31`, updatedAt: 0 });
     s.goalsSeeded = true;
   }
+  for (const g of s.goals)       // goals made before reps could come from workouts
+    if (g.counts === undefined) g.counts = [...(REP_GOAL_SEEDS.find(x => x.id === g.id)?.counts || [])];
   s.lastModified ??= 0;
   s.seedHistoryLoaded ??= false;
   // Per-entry notes + per-workout health are optional; normalise old shapes
@@ -2792,13 +2796,35 @@ function parseTarget(txt) {
   return m ? Math.round(parseFloat(m[1]) * ({ k: 1e3, m: 1e6 }[m[2]] || 1)) : 0;
 }
 
+// "Push-ups", "Push Ups" and "Push Up" are one movement
+const goalKey = (name) => exNameKey(name).replace(/\bups\b/g, "up");
+
+// Reps of the exercises a goal counts, one row per workout inside its dates, finished or
+// still in progress, so a set counts the moment it's logged.
+function workoutRepsFor(goal) {
+  const keys = new Set((goal.counts || []).map(goalKey));
+  if (!keys.size) return [];
+  const keyById = new Map(state.exercises.map(e => [e.id, goalKey(e.name)]));
+  const out = [];
+  for (const w of state.workouts) {
+    if (w.date < goal.start || w.date > goal.end) continue;
+    let n = 0;
+    for (const e of w.entries || []) {
+      if (!keys.has(keyById.get(e.exerciseId))) continue;
+      for (const set of e.sets || []) { const r = Math.round(parseNum(set.reps)); if (r > 0) n += r; }
+    }
+    if (n > 0) out.push({ workoutId: w.id, date: w.date, n, at: w.createdAt || 0 });
+  }
+  return out;
+}
+
 function repGoalView(goal, today = todayISO()) {
   let done = 0, todayN = 0;
-  for (const t of state.tallies) {
-    if (t.goalId !== goal.id || t.date < goal.start || t.date > goal.end) continue;
-    if (t.date < today) done += t.n; else if (t.date === today) todayN += t.n;
-  }
-  return { g: longGoalProgress(goal, today, done, todayN), todayN };
+  const count = (date, n) => { if (date < today) done += n; else if (date === today) todayN += n; };
+  for (const t of state.tallies) if (t.goalId === goal.id && t.date >= goal.start && t.date <= goal.end) count(t.date, t.n);
+  const workouts = workoutRepsFor(goal);
+  for (const w of workouts) count(w.date, w.n);
+  return { g: longGoalProgress(goal, today, done, todayN), todayN, workouts };
 }
 
 function addTally(goalId, n) {
@@ -2832,8 +2858,10 @@ function removeGoal(id) {
 const repTime = (ms) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
 function repGoalHTML(goal) {
-  const { g, todayN } = repGoalView(goal);
+  const { g, todayN, workouts } = repGoalView(goal);
   const mine = state.tallies.filter(t => t.goalId === goal.id).sort((a, b) => (b.at || 0) - (a.at || 0));
+  const history = [...mine.map(t => ({ ...t, kind: "tally" })), ...workouts.map(w => ({ ...w, id: w.workoutId, kind: "workout" }))]
+    .sort((a, b) => b.date.localeCompare(a.date) || (b.at || 0) - (a.at || 0));
   const recent = [];                                    // the amounts he uses most recently, as one-tap buttons
   for (const t of mine) { if (!recent.includes(t.n)) recent.push(t.n); if (recent.length === 3) break; }
   const last = mine[0];
@@ -2854,11 +2882,13 @@ function repGoalHTML(goal) {
       ${recent.length ? `<div class="gl-chips">${recent.map(n => `<button class="gl-chip" data-gl-quick="${goal.id}" data-n="${n}">+${n}</button>`).join("")}</div>` : ""}
       ${last && last.date === todayISO() ? `<div class="gl-last"><span>+${last.n} · ${repTime(last.at)}</span><button class="gl-link" data-gl-del="${last.id}">Undo</button></div>` : ""}
       <div class="gl-foot">
-        ${mine.length ? `<button class="gl-link dim" data-gl-hist="${goal.id}">History ${showHistory ? "▾" : "▸"}</button>` : "<span></span>"}
+        ${history.length ? `<button class="gl-link dim" data-gl-hist="${goal.id}">History ${showHistory ? "▾" : "▸"}</button>` : "<span></span>"}
         <button class="gl-link" data-gl-edit="${goal.id}">${editing ? "Done" : "Edit"}</button>
       </div>
-      ${mine.length && showHistory ? `<div class="gl-hist">
-        ${mine.slice(0, 30).map(t => `<div class="gl-row"><span>${prettyDate(t.date)} · ${repTime(t.at)}</span><strong>+${t.n}</strong><button class="gl-x" data-gl-del="${t.id}" aria-label="Delete entry">×</button></div>`).join("")}
+      ${history.length && showHistory ? `<div class="gl-hist">
+        ${history.slice(0, 30).map(h => h.kind === "workout"
+          ? `<button class="gl-row gl-row-link" data-gl-open="${h.id}"><span>${prettyDate(h.date)} · Workout</span><strong>+${h.n}</strong><span class="gl-chev">›</span></button>`
+          : `<div class="gl-row"><span>${prettyDate(h.date)} · ${repTime(h.at)}</span><strong>+${h.n}</strong><button class="gl-x" data-gl-del="${h.id}" aria-label="Delete entry">×</button></div>`).join("")}
       </div>` : ""}
       ${editing ? `<div class="gl-edit">
         ${field("name", "Name", goal.name, 'type="text"')}
@@ -2866,6 +2896,13 @@ function repGoalHTML(goal) {
         <div class="row">
           ${field("start", "Starts", goal.start, 'type="date"')}
           ${field("end", "Ends", goal.end, 'type="date"')}
+        </div>
+        <div>
+          <span class="label">Counts reps from</span>
+          <div class="gl-tags">
+            ${(goal.counts || []).map(n => `<span class="gl-tag">${escapeHtml(n)}<button class="gl-x" data-gl-uncount="${goal.id}" data-name="${escapeHtml(n)}" aria-label="Remove ${escapeHtml(n)}">×</button></span>`).join("")}
+            <button class="gl-chip" data-gl-count-add="${goal.id}">＋ Exercise</button>
+          </div>
         </div>
         <button class="btn btn-ghost danger" data-gl-remove="${goal.id}">Remove goal</button>
       </div>` : ""}
@@ -2904,6 +2941,22 @@ function bindGoals() {
     if (d.glAdd) add(d.glAdd, list.querySelector(`[data-gl-input="${d.glAdd}"]`)?.value);
     else if (d.glQuick) add(d.glQuick, d.n);
     else if (d.glDel) { deleteTally(d.glDel); renderGoals(); }
+    else if (d.glOpen) { activeWorkoutId = d.glOpen; resetInactivityTimer(); showView("today"); }
+    else if (d.glCountAdd) {
+      openPicker(id => {
+        const ex = state.exercises.find(x => x.id === id), goal = state.goals.find(g => g.id === d.glCountAdd);
+        if (!ex || !goal) return;
+        goal.counts = goal.counts || [];
+        if (!goal.counts.some(n => goalKey(n) === goalKey(ex.name))) goal.counts.push(ex.name);
+        goal.updatedAt = Date.now();
+        saveState();
+        renderGoals();
+      });
+    }
+    else if (d.glUncount) {
+      const goal = state.goals.find(g => g.id === d.glUncount);
+      if (goal) { goal.counts = (goal.counts || []).filter(n => n !== d.name); goal.updatedAt = Date.now(); saveState(); renderGoals(); }
+    }
     else if (d.glHist) { goalHistoryOpen.has(d.glHist) ? goalHistoryOpen.delete(d.glHist) : goalHistoryOpen.add(d.glHist); renderGoals(); }
     else if (d.glEdit) { goalEditing = goalEditing === d.glEdit ? null : d.glEdit; renderGoals(); }
     else if (d.glRemove) {
@@ -2931,7 +2984,7 @@ function bindGoals() {
   });
   $("#btn-goal-add").onclick = () => {
     const today = todayISO();
-    const goal = { id: uid(), name: "New goal", target: 100, start: today, end: `${today.slice(0, 4)}-12-31`, updatedAt: Date.now() };
+    const goal = { id: uid(), name: "New goal", target: 100, counts: [], start: today, end: `${today.slice(0, 4)}-12-31`, updatedAt: Date.now() };
     state.goals.push(goal);
     goalEditing = goal.id;
     saveState();
