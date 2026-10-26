@@ -537,17 +537,17 @@ function longGoalProgress(plan, today, doneBefore, todaySteps) {
   if (!(span >= 0)) return null;
   const n = span + 1, target = plan.target;
   const sinceStart = daysBetweenISO(plan.start, today), untilEnd = daysBetweenISO(today, plan.end);
-  const make = (phase, total, perDay, daysLeft, startsIn = 0) => ({
+  const make = (phase, total, need, daysLeft, startsIn = 0) => ({
     target, start: plan.start, end: plan.end, phase, total, percent: total / target,
-    perDay, daysLeft, totalDays: n, startsIn,
+    perDay: Math.ceil(need - 1e-9), need, daysLeft, totalDays: n, startsIn,
   });
-  if (sinceStart < 0) return make("upcoming", 0, Math.ceil(target / n), n, -sinceStart);
+  if (sinceStart < 0) return make("upcoming", 0, target / n, n, -sinceStart);
   if (untilEnd < 0) return make(doneBefore >= target ? "reached" : "ended", doneBefore, 0, 0);
   const left = n - sinceStart, total = doneBefore + todaySteps;
   if (total >= target) return make("reached", total, 0, left);
   const remaining = target - doneBefore, quota = remaining / left;
-  const perDay = left > 1 && todaySteps > quota ? Math.ceil((remaining - todaySteps) / (left - 1)) : Math.ceil(quota);
-  return make("active", total, perDay, left);
+  const need = left > 1 && todaySteps > quota ? (remaining - todaySteps) / (left - 1) : quota;
+  return make("active", total, need, left);
 }
 
 function longGoalFromState(today = todayISO()) {
@@ -605,6 +605,7 @@ function refreshSteps() {
       stepsInFlight = null;
     }
     renderSteps();
+    renderGoalsIfIdle();
   })();
   return stepsInFlight;
 }
@@ -816,6 +817,25 @@ function mergeStates(local, remote) {
     .filter(w => !(tomb[w.id] && tomb[w.id] >= (w.updatedAt || 0)))
     .sort((a, b) => (a.date + (a.createdAt || 0)).localeCompare(b.date + (b.createdAt || 0)));
 
+  // Goals and what's been logged toward them: union by id, newer edit wins, and a
+  // deletion beats anything not edited after it (a removed goal takes its tallies along)
+  const mergeTombs = (a = {}, b = {}) => {
+    const t = { ...b };
+    for (const [id, ts] of Object.entries(a)) t[id] = Math.max(t[id] || 0, ts || 0);
+    return t;
+  };
+  const gTomb = mergeTombs(local.deletedGoals, remote.deletedGoals);
+  const tTomb = mergeTombs(local.deletedTallies, remote.deletedTallies);
+  out.deletedGoals = gTomb;
+  out.deletedTallies = tTomb;
+  out.goals = unionById(local.goals, remote.goals, localNewer)
+    .filter(g => !(gTomb[g.id] && gTomb[g.id] >= (g.updatedAt || 0)));
+  const liveGoals = new Set(out.goals.map(g => g.id));
+  out.tallies = unionById(local.tallies, remote.tallies, localNewer)
+    .filter(t => liveGoals.has(t.goalId) && !(tTomb[t.id] && tTomb[t.id] >= (t.updatedAt || 0)))
+    .sort((a, b) => (a.at || 0) - (b.at || 0) || String(a.id).localeCompare(String(b.id)));
+  out.goalsSeeded = !!(local.goalsSeeded || remote.goalsSeeded);
+
   // Exercises are displayed name-sorted, so a canonical order here costs nothing
   // and makes the merge order-independent. Templates keep their user-defined
   // order: the remote's sequence first, then anything only local has.
@@ -981,6 +1001,11 @@ function defaultState() {
     seedHistoryLoaded: true, // suppress migrate() from ever loading synthetic data
   };
 }
+const REP_GOAL_SEEDS = [
+  { id: "goal-pushups", name: "Push-ups", target: 1500 },
+  { id: "goal-pullups", name: "Pull-ups", target: 350 },
+  { id: "goal-squats",  name: "Squats",   target: 1500 },
+];
 function migrate(s) {
   s.schemaVersion ??= 1;
   s.exercises ??= [];
@@ -1010,6 +1035,16 @@ function migrate(s) {
   s.health.daily ??= {};
   s.bodyweight ??= [];
   s.deletedWorkouts ??= {};
+  s.goals ??= [];                // rep-count goals: { id, name, target, start, end, updatedAt }
+  s.tallies ??= [];              // what was done toward them: { id, goalId, date, n, at, updatedAt }
+  s.deletedGoals ??= {};
+  s.deletedTallies ??= {};
+  if (!s.goalsSeeded) {          // first run with Goals: Jacob's three, counting from today to year end
+    const today = todayISO();
+    for (const g of REP_GOAL_SEEDS)
+      if (!s.goals.some(x => x.id === g.id)) s.goals.push({ ...g, start: today, end: `${today.slice(0, 4)}-12-31`, updatedAt: 0 });
+    s.goalsSeeded = true;
+  }
   s.lastModified ??= 0;
   s.seedHistoryLoaded ??= false;
   // Per-entry notes + per-workout health are optional; normalise old shapes
@@ -1230,6 +1265,7 @@ function showView(name) {
   if (name === "library") renderLibrary();
   if (name === "templates") renderTemplates();
   if (name === "health") renderHealth();
+  if (name === "goals") { renderGoals(); refreshSteps().then(renderGoalsIfIdle); }
   clearInterval(stepsTimer);
   stepsTimer = null;
   if (name === "steps") {
@@ -2693,41 +2729,216 @@ function syncLongGoalFields() {
   $("#btn-long-clear")?.classList.toggle("hidden", !plan);
 }
 
-function renderLongGoal(g, floor = state.settings.stepGoal || 10000) {
-  const wrap = $("#goal-card-wrap"), host = $("#goal-card");
-  if (!wrap || !host) return;
-  wrap.classList.toggle("hidden", !g);
-  if (!g) { host.innerHTML = ""; return; }
+// Per-day figures: whole numbers for steps; tenths for rep goals, where 5.2 a day is a
+// different ask from 6. Rounded up, since that's the least that finishes on time.
+const fmtPerDay = (x) => x >= 100 ? fmt(Math.ceil(x - 1e-9)) : fmt(Math.ceil(x * 10 - 1e-9) / 10, 1);
+
+// The card both kinds of goal share. Steps work in whole numbers and have a meter from the
+// plan's starting average down to the daily goal; rep goals work in tenths.
+function goalCardHTML(g, { title, floor = null, decimals = false, todayN = 0 } = {}) {
   const pct = Math.floor(Math.min(g.percent, 9.99) * 100);
   const done = g.phase === "reached";
   const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
   const stat = (value, label, cls = "") => `<div class="lg-stat"><strong class="${cls}">${value}</strong><span>${label}</span></div>`;
+  const perDayText = (x) => decimals ? fmtPerDay(x) : fmt(x);
   let stats = "", need = "";
   if (g.phase === "upcoming") {
-    stats = stat(g.startsIn, g.startsIn === 1 ? "day to start" : "days to start") + stat(fmt(g.perDay), "per day") + stat(g.totalDays, "days");
+    stats = stat(g.startsIn, g.startsIn === 1 ? "day to start" : "days to start") + stat(perDayText(decimals ? g.need : g.perDay), "per day") + stat(g.totalDays, "days");
   } else if (g.phase === "reached") {
     stats = stat(fmt(g.total - g.target), "over", "good") + (g.daysLeft ? stat(g.daysLeft, g.daysLeft === 1 ? "day left" : "days left") : "");
   } else if (g.phase === "ended") {
     stats = stat(fmt(g.target - g.total), "short", "bad") + stat(g.totalDays, "days");
   } else {
-    // What each remaining day needs, how far that has come down from the plan's even
-    // average, and how much further it has to fall to reach the daily goal.
-    const planAvg = Math.ceil(g.target / g.totalDays), lowered = planAvg - g.perDay;
-    const delta = lowered === 0 ? "" : `<span class="lg-delta ${lowered > 0 ? "good" : "warn"}">${lowered > 0 ? "▼" : "▲"} ${fmt(Math.abs(lowered))}</span>`;
-    const span = planAvg - floor, atGoal = g.perDay <= floor;
-    const frac = span > 0 ? (atGoal ? 1 : Math.min(1, Math.max(0, lowered / span))) : null;
-    const meter = frac === null ? "" : `
-      <div class="lg-meter"><em>${fmt(planAvg)}</em>
-        <div class="wk-bar${atGoal ? " good" : ""}"><i style="width:${frac > 0 ? Math.max(2, frac * 100).toFixed(1) : 0}%"></i></div>
-        <em>${fmt(floor)}${atGoal ? " ✓" : ""}</em></div>`;
-    need = `<div class="lg-need"><div class="lg-need-top"><span><strong>${fmt(g.perDay)}</strong> per day <em>· ${plural(g.daysLeft, "day")} left</em></span>${delta}</div>${meter}</div>`;
+    // What each remaining day needs, and how far that has moved from the plan's even average.
+    const shownNeed = decimals ? Math.ceil(g.need * 10 - 1e-9) / 10 : g.perDay;
+    const shownPlan = decimals ? Math.ceil(g.target / g.totalDays * 10 - 1e-9) / 10 : Math.ceil(g.target / g.totalDays);
+    const lowered = decimals ? Math.round((shownPlan - shownNeed) * 10) / 10 : shownPlan - shownNeed;
+    const delta = lowered === 0 ? "" : `<span class="lg-delta ${lowered > 0 ? "good" : "warn"}">${lowered > 0 ? "▼" : "▲"} ${fmt(Math.abs(lowered), decimals ? 1 : 0)}</span>`;
+    let meter = "";
+    if (floor != null) {   // …and how much further it has to fall to reach the daily goal
+      const span = shownPlan - floor, atGoal = g.perDay <= floor;
+      const frac = span > 0 ? (atGoal ? 1 : Math.min(1, Math.max(0, lowered / span))) : null;
+      if (frac !== null) meter = `
+        <div class="lg-meter"><em>${fmt(shownPlan)}</em>
+          <div class="wk-bar${atGoal ? " good" : ""}"><i style="width:${frac > 0 ? Math.max(2, frac * 100).toFixed(1) : 0}%"></i></div>
+          <em>${fmt(floor)}${atGoal ? " ✓" : ""}</em></div>`;
+    }
+    need = `<div class="lg-need"><div class="lg-need-top"><span><strong>${perDayText(decimals ? g.need : g.perDay)}</strong> per day <em>· ${plural(g.daysLeft, "day")} left</em></span>${delta}</div>${meter}</div>`;
   }
-  host.innerHTML = `
-    <div class="lg-head"><strong>🎯 ${fmt(g.target)} steps</strong><span>${longDate(g.start)} – ${longDate(g.end)}</span></div>
-    <div class="lg-main"><span class="lg-pct${done ? " good" : ""}">${pct}%</span><span class="lg-count"><strong>${fmt(g.total)}</strong> of ${fmt(g.target)}</span></div>
+  return `
+    <div class="lg-head">${title}<span>${longDate(g.start)} – ${longDate(g.end)}</span></div>
+    <div class="lg-main"><span class="lg-pct${done ? " good" : ""}">${pct}%</span><span class="lg-count"><strong>${fmt(g.total)}</strong> of ${fmt(g.target)}${todayN > 0 ? ` · ${fmt(todayN)} today` : ""}</span></div>
     <div class="wk-bar lg-bar${done ? " good" : ""}"><i style="width:${Math.min(100, g.percent * 100).toFixed(1)}%"></i></div>
     ${need}
     ${stats ? `<div class="lg-stats">${stats}</div>` : ""}`;
+}
+
+function renderLongGoal(g, floor = state.settings.stepGoal || 10000) {
+  const wrap = $("#goal-card-wrap"), host = $("#goal-card");
+  if (!wrap || !host) return;
+  wrap.classList.toggle("hidden", !g);
+  host.innerHTML = g ? goalCardHTML(g, { title: `<strong>🎯 ${fmt(g.target)} steps</strong>`, floor }) : "";
+}
+
+/* ───────── Goals ───────── */
+// Rep-count goals (push-ups, pull-ups, squats…): a total between two dates, tallied by hand
+// each time. They use the same card as the step goal; "per day" is what the remaining days need.
+let goalEditing = null;               // id of the goal whose editor is open
+const goalHistoryOpen = new Set();    // ids whose history list is showing
+
+// "1500", "1,500", "1.5k", "2m"
+function parseTarget(txt) {
+  const m = String(txt).trim().toLowerCase().replace(/,/g, "").match(/^(\d*\.?\d+)\s*([km])?/);
+  return m ? Math.round(parseFloat(m[1]) * ({ k: 1e3, m: 1e6 }[m[2]] || 1)) : 0;
+}
+
+function repGoalView(goal, today = todayISO()) {
+  let done = 0, todayN = 0;
+  for (const t of state.tallies) {
+    if (t.goalId !== goal.id || t.date < goal.start || t.date > goal.end) continue;
+    if (t.date < today) done += t.n; else if (t.date === today) todayN += t.n;
+  }
+  return { g: longGoalProgress(goal, today, done, todayN), todayN };
+}
+
+function addTally(goalId, n) {
+  n = Math.round(Number(n));
+  if (!state.goals.some(g => g.id === goalId) || !(n > 0) || n > 100000) return 0;
+  const now = Date.now();
+  state.tallies.push({ id: uid(), goalId, date: todayISO(), n, at: now, updatedAt: now });
+  saveState();
+  return n;
+}
+
+function deleteTally(id) {
+  const i = state.tallies.findIndex(t => t.id === id);
+  if (i < 0) return;
+  state.tallies.splice(i, 1);
+  state.deletedTallies[id] = Date.now();
+  saveState();
+}
+
+function removeGoal(id) {
+  const now = Date.now();
+  for (const t of state.tallies) if (t.goalId === id) state.deletedTallies[t.id] = now;
+  state.tallies = state.tallies.filter(t => t.goalId !== id);
+  state.goals = state.goals.filter(g => g.id !== id);
+  state.deletedGoals[id] = now;
+  if (goalEditing === id) goalEditing = null;
+  goalHistoryOpen.delete(id);
+  saveState();
+}
+
+const repTime = (ms) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+function repGoalHTML(goal) {
+  const { g, todayN } = repGoalView(goal);
+  const mine = state.tallies.filter(t => t.goalId === goal.id).sort((a, b) => (b.at || 0) - (a.at || 0));
+  const recent = [];                                    // the amounts he uses most recently, as one-tap buttons
+  for (const t of mine) { if (!recent.includes(t.n)) recent.push(t.n); if (recent.length === 3) break; }
+  const last = mine[0];
+  const name = escapeHtml(goal.name);
+  const editing = goalEditing === goal.id;
+  const showHistory = goalHistoryOpen.has(goal.id);
+  const body = g ? goalCardHTML(g, { title: `<strong>${name}</strong>`, decimals: true, todayN })
+                 : `<div class="lg-head"><strong>${name}</strong></div>`;
+  const field = (key, label, value, attrs = "") =>
+    `<label class="col"><span class="label">${label}</span><input ${attrs} data-gl-field="${key}" data-id="${goal.id}" value="${escapeHtml(value)}"></label>`;
+  return `
+    <div class="card gl-card" data-goal="${goal.id}">
+      ${body}
+      <div class="gl-add">
+        <input type="number" inputmode="numeric" min="1" step="1" placeholder="Reps" data-gl-input="${goal.id}" aria-label="Reps to add to ${name}">
+        <button class="btn btn-primary" data-gl-add="${goal.id}">Add</button>
+      </div>
+      ${recent.length ? `<div class="gl-chips">${recent.map(n => `<button class="gl-chip" data-gl-quick="${goal.id}" data-n="${n}">+${n}</button>`).join("")}</div>` : ""}
+      ${last && last.date === todayISO() ? `<div class="gl-last"><span>+${last.n} · ${repTime(last.at)}</span><button class="gl-link" data-gl-del="${last.id}">Undo</button></div>` : ""}
+      <div class="gl-foot">
+        ${mine.length ? `<button class="gl-link dim" data-gl-hist="${goal.id}">History ${showHistory ? "▾" : "▸"}</button>` : "<span></span>"}
+        <button class="gl-link" data-gl-edit="${goal.id}">${editing ? "Done" : "Edit"}</button>
+      </div>
+      ${mine.length && showHistory ? `<div class="gl-hist">
+        ${mine.slice(0, 30).map(t => `<div class="gl-row"><span>${prettyDate(t.date)} · ${repTime(t.at)}</span><strong>+${t.n}</strong><button class="gl-x" data-gl-del="${t.id}" aria-label="Delete entry">×</button></div>`).join("")}
+      </div>` : ""}
+      ${editing ? `<div class="gl-edit">
+        ${field("name", "Name", goal.name, 'type="text"')}
+        ${field("target", "Target", fmt(goal.target), 'type="text" inputmode="numeric"')}
+        <div class="row">
+          ${field("start", "Starts", goal.start, 'type="date"')}
+          ${field("end", "Ends", goal.end, 'type="date"')}
+        </div>
+        <button class="btn btn-ghost danger" data-gl-remove="${goal.id}">Remove goal</button>
+      </div>` : ""}
+    </div>`;
+}
+
+function renderGoals() {
+  const host = $("#goals-list");
+  if (!host) return;
+  const v = stepView();
+  const steps = v.longGoal
+    ? `<div class="card gl-card">${goalCardHTML(v.longGoal, { title: `<strong>🎯 ${fmt(v.longGoal.target)} steps</strong>`, floor: v.goal })}</div>` : "";
+  host.innerHTML = steps + state.goals.map(repGoalHTML).join("");
+}
+
+// For refreshes nobody asked for: never redraw under a half-typed number.
+function renderGoalsIfIdle() {
+  const host = $("#goals-list");
+  if (!host || !$("#view-goals.active") || host.contains(document.activeElement)) return;
+  renderGoals();
+}
+
+function bindGoals() {
+  const list = $("#goals-list");
+  if (!list) return;
+  const add = (goalId, raw) => {
+    const n = addTally(goalId, raw);
+    if (!n) { toast("Enter a number"); return; }
+    renderGoals();
+    toast(`${state.goals.find(g => g.id === goalId).name} +${fmt(n)}`);
+  };
+  list.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    const d = b.dataset;
+    if (d.glAdd) add(d.glAdd, list.querySelector(`[data-gl-input="${d.glAdd}"]`)?.value);
+    else if (d.glQuick) add(d.glQuick, d.n);
+    else if (d.glDel) { deleteTally(d.glDel); renderGoals(); }
+    else if (d.glHist) { goalHistoryOpen.has(d.glHist) ? goalHistoryOpen.delete(d.glHist) : goalHistoryOpen.add(d.glHist); renderGoals(); }
+    else if (d.glEdit) { goalEditing = goalEditing === d.glEdit ? null : d.glEdit; renderGoals(); }
+    else if (d.glRemove) {
+      const goal = state.goals.find(g => g.id === d.glRemove);
+      const logged = state.tallies.filter(t => t.goalId === d.glRemove).reduce((a, t) => a + t.n, 0);
+      if (goal && confirm(`Remove ${goal.name}${logged ? ` and its ${fmt(logged)} logged` : ""}?`)) { removeGoal(d.glRemove); renderGoals(); }
+    }
+  });
+  list.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && e.target.matches("[data-gl-input]")) { e.preventDefault(); add(e.target.dataset.glInput, e.target.value); }
+  });
+  list.addEventListener("change", (e) => {
+    const f = e.target.closest("[data-gl-field]");
+    const goal = f && state.goals.find(g => g.id === f.dataset.id);
+    if (!goal) return;
+    const key = f.dataset.glField;
+    if (key === "name") goal.name = f.value.trim() || goal.name;
+    else if (key === "target") { const n = parseTarget(f.value); if (n > 0) goal.target = n; }
+    else if (key === "start" && f.value) goal.start = f.value;
+    else if (key === "end" && f.value) goal.end = f.value;
+    if (goal.end < goal.start) goal.end = `${goal.start.slice(0, 4)}-12-31`;
+    goal.updatedAt = Date.now();
+    saveState();
+    renderGoals();
+  });
+  $("#btn-goal-add").onclick = () => {
+    const today = todayISO();
+    const goal = { id: uid(), name: "New goal", target: 100, start: today, end: `${today.slice(0, 4)}-12-31`, updatedAt: Date.now() };
+    state.goals.push(goal);
+    goalEditing = goal.id;
+    saveState();
+    renderGoals();
+    const input = list.querySelector(`[data-gl-field="name"][data-id="${goal.id}"]`);
+    input?.focus(); input?.select();
+  };
 }
 
 function renderSteps() {
@@ -3230,10 +3441,6 @@ function bindEvents() {
 
   // Long-term goal: a step total between two dates. Clearing the total removes it.
   const lgTarget = $("#setting-long-target"), lgStart = $("#setting-long-start"), lgEnd = $("#setting-long-end");
-  const parseTarget = (txt) => {
-    const m = String(txt).trim().toLowerCase().replace(/,/g, "").match(/^(\d*\.?\d+)\s*([km])?/);
-    return m ? Math.round(parseFloat(m[1]) * ({ k: 1e3, m: 1e6 }[m[2]] || 1)) : 0;
-  };
   const saveLongGoal = () => {
     const target = parseTarget(lgTarget.value);
     if (target > 0) {
@@ -3619,6 +3826,7 @@ const isNativeApp = () => !!(window.Capacitor?.isNativePlatform?.());
 function init() {
   applyTheme();
   bindEvents();
+  bindGoals();
   // The service worker is the offline layer for BOTH the web PWA and the
   // native shell (which loads the live site in remote mode — WKAppBoundDomains
   // makes SWs available there). Only the legacy bundled capacitor:// scheme
