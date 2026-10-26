@@ -415,6 +415,13 @@ pure-web changes only need the `cap:sync` + reinstall.
 - **First-run permission denial is silent** — the plugin's read calls just
   return empty. Check `checkAuthorization` before assuming your reads
   should have returned data.
+- **Capacitor injects a global called `nativeBridge`** (`var nativeBridge = …`)
+  before your scripts run. A top-level `const`/`let`/`function nativeBridge`
+  in a classic script is then a SyntaxError and the *entire* file is skipped,
+  so the app shows only the static HTML. A browser has no such global, so it
+  works there and fails only on the phone. Before shipping new top-level
+  names, load `native-bridge.js` ahead of the app in a test page (or run the
+  Debug build in the iOS Simulator) and check the app still boots.
 
 ---
 
