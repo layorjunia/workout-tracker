@@ -2747,13 +2747,12 @@ function syncLongGoalFields() {
    only thing stored is how far each goal has already been cheered (state.cheers), so a
    medal is celebrated once, however many devices see it. */
 const reducedMotion = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-const nativeBridge = () => (window.Capacitor?.isNativePlatform?.() ? window.Capacitor?.Plugins?.StreakBridge : null);
 
 // A tap from the phone's haptic engine. "tick" for a rep logged, "success" and "burst" for
 // rings and medals.
 let nativeHaptics = true, tapSwitch;
 function haptic(kind = "tick") {
-  const bridge = nativeBridge();
+  const bridge = window.Capacitor?.isNativePlatform?.() ? window.Capacitor?.Plugins?.StreakBridge : null;
   if (bridge && nativeHaptics) {
     try { bridge.haptic?.({ style: kind })?.catch?.(() => { nativeHaptics = false; }); } catch { nativeHaptics = false; }
     return;
