@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <title>Workout Tracker</title>
-<link rel="stylesheet" href="styles.css?v=66">
+<link rel="stylesheet" href="styles.css?v=68">
 </head>
 <body>
 
@@ -541,6 +541,18 @@
           <button class="btn btn-secondary" id="btn-sync-force">Sync now</button>
           <button class="btn btn-ghost" id="btn-sync-signout">Sign out</button>
         </div>
+        <button class="btn btn-ghost danger" id="btn-sync-delete" style="width:100%; margin-top:8px">Delete account</button>
+        <div id="sync-delete-panel" class="hidden" style="margin-top:8px">
+          <label>
+            <span class="label">4-digit PIN</span>
+            <input type="password" id="sync-delete-pin" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="••••" autocomplete="off">
+          </label>
+          <div id="sync-delete-error" class="muted small" style="color: var(--danger); min-height: 16px;"></div>
+          <div class="row actions">
+            <button class="btn btn-ghost" id="btn-sync-delete-cancel">Cancel</button>
+            <button class="btn btn-primary" id="btn-sync-delete-confirm" style="background: var(--danger); border-color: var(--danger)">Delete account</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -590,7 +602,8 @@
     <div class="card muted small">
       <p>Volume = Load × Reps, summed across all sets.</p>
       <p>Estimated 1RM uses the Brzycki formula: load × 36 / (37 − reps).</p>
-      <p>Built for <span id="user-email">jacob</span>. v<span id="app-version"></span></p>
+      <p>v<span id="app-version"></span></p>
+      <p><a href="https://layorjunia-workouts.vercel.app/privacy.html" target="_blank" rel="noopener">Privacy policy</a> · <a href="https://layorjunia-workouts.vercel.app/support.html" target="_blank" rel="noopener">Support</a></p>
     </div>
   </div>
 </section>
@@ -698,10 +711,10 @@
   </button>
 </nav>
 
-<script src="vendor/chart.umd.js?v=66"></script>
-<script src="app.js?v=66"></script>
-<script src="analytics.js?v=66"></script>
-<script type="module" src="vendor/firebase-sync.bundle.js?v=66"></script>
-<script src="capacitor-health.js?v=66"></script>
+<script src="vendor/chart.umd.js?v=68"></script>
+<script src="app.js?v=68"></script>
+<script src="analytics.js?v=68"></script>
+<script type="module" src="vendor/firebase-sync.bundle.js?v=68"></script>
+<script src="capacitor-health.js?v=68"></script>
 </body>
 </html>

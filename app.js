@@ -991,7 +991,9 @@ function defaultState() {
   // data only arrives via Firebase cloud sync after they sign in. Defaults —
   // exercise library, templates, profile — are shared across everyone since
   // they're just starting points, not personal data.
-  return {
+  // migrate() fills in everything a later version added (goals, tallies, step settings...), so a
+  // first launch has the same complete state as every launch after it.
+  return migrate({
     schemaVersion: 1,
     exercises: SEED.exercises.map(e => ({ id: exSlugId(e.name), ...e })),
     days: JSON.parse(JSON.stringify(SEED.days)),
@@ -1005,7 +1007,8 @@ function defaultState() {
     deletedWorkouts: {},
     lastModified: 0,
     seedHistoryLoaded: true, // suppress migrate() from ever loading synthetic data
-  };
+    goalsSeeded: true,       // a new person starts with no goals; the three year-end rep goals were Jacob's own
+  });
 }
 // `counts` = the logged exercises whose reps add to the goal on their own (matched by name).
 // Leg press, split squats and assisted pull-ups are left out; they can be added per goal.
@@ -3839,11 +3842,15 @@ function bindEvents() {
       btn.textContent = "Sign in / Create account";
     }
   };
-  $("#btn-sync-signout").onclick = async () => {
-    if (!confirm("Sign out? Your workouts stay in the cloud. This browser will show empty defaults until you sign in again.")) return;
-    await window.WorkoutSync?.signOut?.();
+  const closeDeletePanel = () => {
+    $("#sync-delete-panel").classList.add("hidden");
+    $("#btn-sync-delete").classList.remove("hidden");
+    $("#sync-delete-pin").value = "";
+    $("#sync-delete-error").textContent = "";
+  };
+  // Wipe local storage of user data so no data leaks to the next opener of this browser
+  const wipeLocalData = () => {
     window.WorkoutNativeHealth?.stop?.();
-    // Wipe local storage of user data so no data leaks to the next opener of this browser
     localStorage.removeItem(STORAGE_KEY);
     activeWorkoutId = null;
     state = defaultState();
@@ -3851,8 +3858,43 @@ function bindEvents() {
     applyTheme();
     $("#history-filter") && ($("#history-filter").innerHTML = '<option value="">All exercises</option>');
     $("#progress-exercise") && ($("#progress-exercise").innerHTML = "");
+    closeDeletePanel();
     showView("settings");
+  };
+  $("#btn-sync-signout").onclick = async () => {
+    if (!confirm("Sign out? Your workouts stay in the cloud. This browser will show empty defaults until you sign in again.")) return;
+    await window.WorkoutSync?.signOut?.();
+    wipeLocalData();
     toast("Signed out");
+  };
+  $("#btn-sync-delete").onclick = () => {
+    $("#btn-sync-delete").classList.add("hidden");
+    $("#sync-delete-panel").classList.remove("hidden");
+    $("#sync-delete-pin").focus();
+  };
+  $("#btn-sync-delete-cancel").onclick = closeDeletePanel;
+  $("#btn-sync-delete-confirm").onclick = async () => {
+    const pinEl = $("#sync-delete-pin");
+    const errEl = $("#sync-delete-error");
+    const btn = $("#btn-sync-delete-confirm");
+    errEl.textContent = "";
+    if (!/^\d{4}$/.test(pinEl.value)) { errEl.textContent = "PIN must be exactly 4 digits"; return; }
+    if (!confirm("Delete your account and all of its synced data? This can't be undone.")) return;
+    btn.disabled = true;
+    btn.textContent = "Deleting…";
+    try {
+      const sync = window.WorkoutSync;
+      if (!sync?.deleteAccount) throw new Error("Not ready yet — try again in a moment");
+      const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error("Timed out — check your connection and try again")), 30000));
+      await Promise.race([sync.deleteAccount(pinEl.value), timeout]);
+      wipeLocalData();
+      toast("Account deleted");
+    } catch (e) {
+      errEl.textContent = e.message || String(e);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Delete account";
+    }
   };
   $("#btn-sync-force").onclick = () => window.WorkoutSync?.forcePush?.();
   $("#btn-templates-add").onclick = () => {

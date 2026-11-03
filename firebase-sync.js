@@ -23,11 +23,12 @@ import {
   signInWithEmailAndPassword, createUserWithEmailAndPassword,
   GoogleAuthProvider, signInWithPopup, browserPopupRedirectResolver,
   indexedDBLocalPersistence, browserLocalPersistence,
+  EmailAuthProvider, reauthenticateWithCredential, deleteUser,
 } from "firebase/auth";
 import {
   initializeFirestore, persistentLocalCache, persistentSingleTabManager,
   doc, setDoc, getDoc, getDocFromServer, onSnapshot, serverTimestamp,
-  waitForPendingWrites, enableNetwork,
+  waitForPendingWrites, enableNetwork, deleteDoc,
 } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -78,6 +79,7 @@ let currentUser = null;
 let unsubscribeSnapshot = null;
 let pushTimer = null;
 let lastPushAt = 0;
+let deletingAccount = false;   // set while an account is being deleted, until the next sign-in: nothing may write its document again
 let pendingPush = false;       // a push is queued or in flight
 let online = typeof navigator === "undefined" ? true : navigator.onLine !== false;
 const PUSH_DEBOUNCE_MS = 2000;
@@ -90,7 +92,7 @@ function notifyStatus() {
 
 // ───────── Push ─────────
 function scheduleCloudPush() {
-  if (!currentUser) return;
+  if (!currentUser || deletingAccount) return;
   pendingPush = true;
   notifyStatus();
   if (pushTimer) clearTimeout(pushTimer);
@@ -98,7 +100,7 @@ function scheduleCloudPush() {
 }
 
 async function doCloudPush() {
-  if (!currentUser) return;
+  if (!currentUser || deletingAccount) return;
   const state = window.__getState?.();
   if (!state) return;
   const payload = { state, updatedAt: serverTimestamp(), deviceId, clientTime: Date.now() };
@@ -169,6 +171,7 @@ function subscribeSnapshot() {
 
 onAuthStateChanged(auth, async (user) => {
   currentUser = user || null;
+  if (user) deletingAccount = false;
   window.__onAuthChanged?.(user
     ? { uid: user.uid, email: user.email, name: user.displayName, photoURL: user.photoURL }
     : null);
@@ -246,10 +249,44 @@ async function signOutOfApp() {
   if (unsubscribeSnapshot) { unsubscribeSnapshot(); unsubscribeSnapshot = null; }
 }
 
+// Apple requires an in-app way to delete an account. Confirm the PIN again (Firebase only deletes
+// an account after a recent sign-in), remove the cloud copy of the data, then the account itself.
+async function deleteAccount(pin) {
+  const user = auth.currentUser;
+  if (!user) throw new Error("You're not signed in");
+  const rawPin = String(pin || "");
+  if (!/^\d{4}$/.test(rawPin)) throw new Error("PIN must be exactly 4 digits");
+  if (!online) throw new Error("You're offline — deleting your account needs a connection.");
+  try {
+    await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, rawPin + PIN_SUFFIX));
+  } catch (e) {
+    if (e.code === "auth/wrong-password" || e.code === "auth/invalid-credential") throw new Error("Wrong PIN");
+    if (e.code === "auth/network-request-failed") throw new Error("No connection — try again when you have signal");
+    throw e;
+  }
+  // From here nothing may write the document again: a queued push would bring it back.
+  deletingAccount = true;
+  if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
+  pendingPush = false;
+  if (unsubscribeSnapshot) { unsubscribeSnapshot(); unsubscribeSnapshot = null; }
+  try {
+    await deleteDoc(doc(db, "users", user.uid));
+    await deleteUser(user);
+  } catch (e) {
+    console.error("[sync] delete account failed:", e);
+    deletingAccount = false;
+    subscribeSnapshot();
+    notifyStatus();
+    if (e.code === "auth/network-request-failed") throw new Error("No connection — try again when you have signal");
+    throw new Error("Couldn't delete the account. Try again in a moment.");
+  }
+}
+
 window.WorkoutSync = {
   signInWithPIN,
   signInGoogle,
   signOut: signOutOfApp,
+  deleteAccount,
   scheduleCloudPush,
   forcePush: doCloudPush,
   flushAfterReconnect,
