@@ -8,7 +8,12 @@ Connect yet. Scripts: `scripts/asc-status.py` (read-only look at the account), `
 
 - **Name.** 30 characters max and unique across the whole App Store; "Workout Tracker" is almost
   certainly taken. The name under the icon on the Home Screen stays "Workout Tracker".
-- **Seller name.** The App Store shows the developer account's legal name: "Illuminate Drones, LLC".
+- **Seller name.** The App Store shows the developer account's legal name, so it will read
+  "Illuminate Drones, LLC". Apple accepts only a legal name (a person's, or a registered company's), not
+  a brand or a DBA, so "Layor Junia" would need its own Apple Developer account for a legal entity with
+  that name. An app can be transferred to another account later, so shipping under Illuminate Drones
+  first does not close that door. If the name changes, `privacy.html` (which says "published by
+  Illuminate Drones, LLC") and the signing setup (team, bundle IDs, App Group) move with the account.
 - **Price.** Free (no bank or tax forms needed).
 
 ## Listing text
@@ -67,23 +72,25 @@ Not collected: location, contacts, browsing or search history, purchases, usage 
 
 ## Screenshots
 
-iPhone 6.9-inch, 1320 x 2868, 3 to 10 images. No iPad set is needed (the app is iPhone-only). Use
-demo data, never real workouts.
+Five iPhone 6.9-inch images (1320 x 2868) are in `store/screenshots/iphone-6.9/` (git-ignored): Today,
+Progress, Steps, Goals, Health. They are the real app rendered from made-up demo data, with an iPhone
+status bar drawn on. Regenerate them after any UI change with `node scripts/screenshots.mjs` (needs
+Google Chrome). No iPad set is needed (the app is iPhone-only).
 
 ## Checklist
 
 | # | Step | Who | State |
 |---|---|---|---|
-| 1 | Accept Apple's updated Program License Agreement (Account Holder, developer.apple.com/account) | Jacob | waiting |
-| 2 | Create the app in App Store Connect (the API cannot) | Jacob | waiting |
-| 3 | In-app account deletion (required by App Review 5.1.1(v)) | done | in working copy |
-| 4 | First-launch fix: a new install now starts with a complete state, and no personal goals | done | in working copy |
-| 5 | Privacy policy and support pages, in-app links | done | in working copy |
-| 6 | iPhone-only, privacy manifests, encryption flag, clearer Health wording | done | built and checked |
-| 7 | Deploy the web changes (`git push`): App Review loads the live site, so this comes before submitting | needs Jacob's OK | |
-| 8 | Screenshots from the simulator with demo data | Claude | |
-| 9 | `scripts/appstore-profiles.py`, then `scripts/release.sh --upload` | Claude | blocked on 1 and 2 |
-| 10 | Fill in the listing, attach the build | Claude (API) | blocked on 2 |
+| 1 | Accept Apple's updated Program License Agreement | Jacob | done |
+| 2 | Decide the seller name (above), then create the app in App Store Connect (the API cannot) | Jacob | waiting |
+| 3 | In-app account deletion (App Review 5.1.1(v)) | done | live in v68 |
+| 4 | First-launch fix, and no personal goals for new people | done | live in v68 |
+| 5 | Privacy policy and support pages, in-app links | done | live |
+| 6 | iPhone-only, privacy manifests, encryption flag, clearer Health wording | done | in the signed export |
+| 7 | Deploy the web changes | done | pushed as 561c8fb, checked live |
+| 8 | Screenshots | done | `store/screenshots/iphone-6.9/` |
+| 9 | App Store signing profiles, and a signed export of the .ipa | done | tested 2026-11-03, nothing uploaded |
+| 10 | `scripts/release.sh --upload`, then fill in the listing and attach the build | Claude (API) | blocked on 2 |
 | 11 | Answer App Privacy in App Store Connect (the API cannot) | Jacob | |
 | 12 | Submit for review, then release | Jacob's go-ahead | |
 

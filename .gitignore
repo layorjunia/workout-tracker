@@ -13,4 +13,5 @@ ios/build/
 node_modules/
 scratch/
 scripts/.asc-env
+store/screenshots/
 www/
