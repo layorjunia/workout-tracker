@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Workout Tracker</string>
+        <string>Sets &amp; Steps</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -62,8 +62,8 @@
 		<string>layorjunia-workouts.vercel.app</string>
 	</array>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Workout Tracker reads your steps, heart rate, heart rate variability, blood oxygen, sleep, active energy, weight, body fat, workouts and nutrition totals from Health to show trends alongside your logged workouts.</string>
+	<string>Sets &amp; Steps reads your steps, heart rate, heart rate variability, blood oxygen, sleep, active energy, weight, body fat, workouts and nutrition totals from Health to show trends alongside your logged workouts.</string>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>Workout Tracker does not write to Health.</string>
+	<string>Sets &amp; Steps does not write to Health.</string>
 </dict>
 </plist>

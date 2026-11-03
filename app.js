@@ -4062,7 +4062,7 @@ function bindEvents() {
       renderHealth();
       const got = state.health?.data && Object.keys(state.health.data).length > 1;
       if (got) toast("Apple Health synced");
-      else if (statusEl) statusEl.textContent = "No data came back. Check Settings → Health → Data Access & Devices → Workout Tracker.";
+      else if (statusEl) statusEl.textContent = "No data came back. Check Settings → Health → Data Access & Devices → Sets & Steps.";
     } catch (e) {
       if (statusEl) statusEl.textContent = "⚠ " + (e?.message || e);
     } finally {

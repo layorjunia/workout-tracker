@@ -109,7 +109,7 @@ else:
             print(f"   version {at['versionString']:<8} {at.get('appStoreState') or at.get('appVersionState')}")
         if not vers["data"]:
             print("   no version created yet")
-    builds = get(f"/v1/apps/{aid}/builds?limit=5&sort=-uploadedDate")
+    builds = get(f"/v1/builds?filter[app]={aid}&sort=-uploadedDate&limit=5")
     if not failed("builds", builds):
         for b in builds["data"]:
             at = b["attributes"]

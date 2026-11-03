@@ -1,6 +1,6 @@
 {
-  "name": "Workout Tracker",
-  "short_name": "Workout",
+  "name": "Sets & Steps",
+  "short_name": "Sets & Steps",
   "description": "Track lifts, volume, macros, and Apple Health alongside",
   "start_url": "./",
   "scope": "./",

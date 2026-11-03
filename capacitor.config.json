@@ -1,6 +1,6 @@
 {
   "appId": "com.layorjunia.workouttracker",
-  "appName": "Workout Tracker",
+  "appName": "Sets & Steps",
   "webDir": "www",
   "ios": {
     "contentInset": "always",

@@ -1,37 +1,35 @@
-# App Store release: Workout Tracker
+# App Store release: Sets & Steps
 
-Draft listing text and the submission checklist. Nothing here has been entered into App Store
-Connect yet. Scripts: `scripts/asc-status.py` (read-only look at the account), `scripts/appstore-profiles.py`
+The app record exists (Apple ID 6830320969). The listing text below is a draft until it is entered in
+App Store Connect. Scripts: `scripts/asc.py` (any one API call), `scripts/asc-status.py` (read-only look at the account), `scripts/appstore-profiles.py`
 (signing profiles), `scripts/release.sh` (`--archive-only`, default = signed export, `--upload`).
 
-## Decide before the app record is created
+## Decided
 
-- **Name.** 30 characters max and unique across the whole App Store; "Workout Tracker" is almost
-  certainly taken. The name under the icon on the Home Screen stays "Workout Tracker".
-- **Seller name.** The App Store shows the developer account's legal name, so it will read
-  "Illuminate Drones, LLC". Apple accepts only a legal name (a person's, or a registered company's), not
-  a brand or a DBA, so "Layor Junia" would need its own Apple Developer account for a legal entity with
-  that name. An app can be transferred to another account later, so shipping under Illuminate Drones
-  first does not close that door. If the name changes, `privacy.html` (which says "published by
-  Illuminate Drones, LLC") and the signing setup (team, bundle IDs, App Group) move with the account.
+- **Name.** Sets & Steps (30 characters max, unique across the App Store; "Workout Tracker" was taken).
+  The label under the icon on the Home Screen is the same. The name stays editable until release.
+- **Developer name.** "Illuminate Drones, LLC", set when the app record was created on 2026-11-03. Apple
+  lets an organization set this only once, with its first app, and it cannot be edited later. It would
+  have to be a registered trade name or DBA to differ from the legal name, and it applies to every app in
+  the account. Showing a different name later means transferring the app to another developer account.
 - **Price.** Free (no bank or tax forms needed).
 
 ## Listing text
 
 | Field | Text |
 |---|---|
-| Subtitle (30) | Lifts, steps, goals, streaks |
+| Subtitle (30) | Workout log, streaks & goals |
 | Category | Health & Fitness |
 | Age rating | 4+ (answer "None" to every content question) |
 | Promotional text (170) | Log every set, watch your progress charts, and hit your daily step goal. A Home Screen widget keeps your streak in sight. |
-| Keywords (100) | workout,gym,lifting,log,tracker,steps,streak,goals,fitness,strength,sets,reps,progress,widget |
+| Keywords (100) | gym,lifting,tracker,strength,reps,progress,widget,exercise,weights,routine,habit,pedometer,1rm |
 | Support URL | https://layorjunia-workouts.vercel.app/support.html |
 | Privacy policy URL | https://layorjunia-workouts.vercel.app/privacy.html |
 | Copyright | 2026 Illuminate Drones, LLC |
 
 **Description**
 
-Workout Tracker is a fast, no-nonsense log for lifting and daily activity.
+Sets & Steps is a fast, no-nonsense log for lifting and daily activity.
 
 - Log workouts from templates you can edit: sets, reps, weight, time and cardio.
 - See your progress: estimated 1RM, volume, personal records and a chart for every exercise.
@@ -41,11 +39,11 @@ Workout Tracker is a fast, no-nonsense log for lifting and daily activity.
 - Your log is saved on your phone first, so spotty gym Wi-Fi never loses a set. Sign in (optional) to sync across devices with a name and a 4-digit PIN, and delete your account in Settings any time.
 - Private: no ads and no tracking.
 
-Workout Tracker is a general fitness log, not medical advice.
+Sets & Steps is a general fitness log, not medical advice.
 
 ## Notes for App Review
 
-> Workout Tracker is a native iPhone app with Apple Health (HealthKit) integration, a Home Screen
+> Sets & Steps is a native iPhone app with Apple Health (HealthKit) integration, a Home Screen
 > widget (WidgetKit) and haptic feedback. Its screens are served from our own website over HTTPS
 > inside the app's web view.
 >
@@ -82,7 +80,7 @@ Google Chrome). No iPad set is needed (the app is iPhone-only).
 | # | Step | Who | State |
 |---|---|---|---|
 | 1 | Accept Apple's updated Program License Agreement | Jacob | done |
-| 2 | Decide the seller name (above), then create the app in App Store Connect (the API cannot) | Jacob | waiting |
+| 2 | Decide the names and create the app in App Store Connect | done | created 2026-11-03: "Sets & Steps" by Illuminate Drones, LLC |
 | 3 | In-app account deletion (App Review 5.1.1(v)) | done | live in v68 |
 | 4 | First-launch fix, and no personal goals for new people | done | live in v68 |
 | 5 | Privacy policy and support pages, in-app links | done | live |
@@ -91,7 +89,7 @@ Google Chrome). No iPad set is needed (the app is iPhone-only).
 | 8 | Screenshots | done | `store/screenshots/iphone-6.9/` |
 | 9 | App Store signing profiles, and a signed export of the .ipa | done | tested 2026-11-03, nothing uploaded |
 | 10 | `scripts/release.sh --upload`, then fill in the listing and attach the build | Claude (API) | blocked on 2 |
-| 11 | Answer App Privacy in App Store Connect (the API cannot) | Jacob | |
+| 11 | In App Store Connect (web only): App Privacy answers, EU Digital Services Act trader status, regulated-medical-device declaration, and a phone number for the review contact | Jacob | |
 | 12 | Submit for review, then release | Jacob's go-ahead | |
 
 ## Known gaps worth a decision
