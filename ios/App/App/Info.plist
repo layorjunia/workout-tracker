@@ -22,6 +22,8 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
@@ -60,7 +62,7 @@
 		<string>layorjunia-workouts.vercel.app</string>
 	</array>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Workout Tracker reads heart rate, sleep, activity, and body composition metrics to show trends alongside your logged workouts.</string>
+	<string>Workout Tracker reads your steps, heart rate, heart rate variability, blood oxygen, sleep, active energy, weight, body fat, workouts and nutrition totals from Health to show trends alongside your logged workouts.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Workout Tracker does not write to Health.</string>
 </dict>

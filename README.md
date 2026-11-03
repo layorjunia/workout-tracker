@@ -24,7 +24,7 @@ No build step. No dependencies installed locally — Chart.js loads from a CDN.
 
 1. **Create the repo and push:**
    ```bash
-   cd "/Users/jacob/Desktop/Workout App"
+   cd "/Users/jacob/Desktop/LAYOR APPS/Workout App"
    git init
    git add index.html app.js styles.css README.md
    git commit -m "Initial workout tracker"

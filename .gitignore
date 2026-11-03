@@ -11,4 +11,6 @@ ios/App/Pods/
 ios/build-sim/
 ios/build/
 node_modules/
+scratch/
+scripts/.asc-env
 www/
