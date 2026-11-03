@@ -8,7 +8,7 @@ directory. This overrides the default of using the scratchpad for temporary file
 | What | Where |
 |---|---|
 | Throwaway work: test copies, renders, recordings, logs, anything pulled off the phone | `scratch/` (git-ignored). Delete what you made when the job is done. |
-| Reusable scripts | `scripts/`. `scripts/bump-version.sh <from> <to>` bumps `?v=` in `index.html` and `VERSION` in `service-worker.js`. App Store release: `scripts/asc-status.py`, `scripts/asc.py` (one API call), `scripts/asc-listing.py`, `scripts/appstore-profiles.py`, `scripts/release.sh` (keys in the git-ignored `scripts/.asc-env`); listing text and checklist in `APP-STORE.md`. |
+| Reusable scripts | `scripts/`. `scripts/bump-version.sh <from> <to>` bumps `?v=` in `index.html` and `VERSION` in `service-worker.js`. App Store release: `scripts/asc-status.py`, `scripts/asc.py` (one API call), `scripts/asc-listing.py`, `scripts/appstore-profiles.py`, `scripts/release.sh`, `scripts/make-icon.sh` (draws and installs the app icon; keys in the git-ignored `scripts/.asc-env`); listing text and checklist in `APP-STORE.md`. |
 | Swift test and render harnesses | `ios/tests/` (not part of the Xcode project) |
 | Store screenshots | `store/screenshots/` (git-ignored output), made by `node scripts/screenshots.mjs` from the demo data in `scripts/screenshots/` |
 | Reference guides | the project root, beside `CAPACITOR.md` |

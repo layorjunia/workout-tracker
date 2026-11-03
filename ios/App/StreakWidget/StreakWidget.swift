@@ -287,7 +287,7 @@ struct StreakWidget: Widget {
                 StreakWidgetView(entry: entry).padding()
             }
         }
-        .configurationDisplayName("Workout Streak")
+        .configurationDisplayName("Steps & Streak")
         .description("Today's steps and your goal streak.")
         .supportedFamilies([.systemSmall, .systemMedium])
     }

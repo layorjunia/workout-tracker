@@ -13,6 +13,9 @@ App Store Connect. Scripts: `scripts/asc.py` (any one API call), `scripts/asc-st
   have to be a registered trade name or DBA to differ from the legal name, and it applies to every app in
   the account. Showing a different name later means transferring the app to another developer account.
 - **Price.** Free (no bank or tax forms needed).
+- **Icon.** A glowing dumbbell whose plates step down like stairs, inside a ten-segment counter ring (the same ten steps
+  as the app's medal bar). Drawn by `scripts/icon/icon.py`, installed by `scripts/make-icon.sh`. The store icon comes
+  from the uploaded build, so changing it means uploading a new build.
 
 ## Listing text
 
