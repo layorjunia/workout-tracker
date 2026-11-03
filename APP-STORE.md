@@ -91,7 +91,7 @@ Google Chrome). No iPad set is needed (the app is iPhone-only).
 | 7 | Deploy the web changes | done | pushed as 561c8fb, checked live |
 | 8 | Screenshots | done | 5 uploaded (1320 x 2868) to the 6.7/6.9-inch slot, `store/screenshots/iphone-6.9/` |
 | 9 | App Store signing profiles, and a signed export of the .ipa | done | tested, then used for the upload |
-| 10 | Upload the build and fill in the listing (text, category, age rating 4+, free, 175 storefronts, copyright, content rights, review notes) | done | build 261103.1237 attached to 1.0; `scripts/release.sh --upload`, `scripts/asc-listing.py` |
+| 10 | Upload the build and fill in the listing (text, category, age rating 4+, free, 175 storefronts, copyright, content rights, review notes) | done | build 261103.1303 (new icon) attached to 1.0; `scripts/release.sh --upload`, `scripts/asc-listing.py` |
 | 11 | In App Store Connect (web only): App Privacy answers, regulated-medical-device declaration (App Information), EU Digital Services Act trader status, and the review contact phone (Apple requires one) | Jacob | waiting |
 | 12 | Add for Review, then Submit (releases automatically once approved) | Jacob's go-ahead | |
 
