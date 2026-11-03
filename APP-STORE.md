@@ -86,11 +86,11 @@ Google Chrome). No iPad set is needed (the app is iPhone-only).
 | 5 | Privacy policy and support pages, in-app links | done | live |
 | 6 | iPhone-only, privacy manifests, encryption flag, clearer Health wording | done | in the signed export |
 | 7 | Deploy the web changes | done | pushed as 561c8fb, checked live |
-| 8 | Screenshots | done | `store/screenshots/iphone-6.9/` |
-| 9 | App Store signing profiles, and a signed export of the .ipa | done | tested 2026-11-03, nothing uploaded |
-| 10 | `scripts/release.sh --upload`, then fill in the listing and attach the build | Claude (API) | blocked on 2 |
-| 11 | In App Store Connect (web only): App Privacy answers, EU Digital Services Act trader status, regulated-medical-device declaration, and a phone number for the review contact | Jacob | |
-| 12 | Submit for review, then release | Jacob's go-ahead | |
+| 8 | Screenshots | done | 5 uploaded (1320 x 2868) to the 6.7/6.9-inch slot, `store/screenshots/iphone-6.9/` |
+| 9 | App Store signing profiles, and a signed export of the .ipa | done | tested, then used for the upload |
+| 10 | Upload the build and fill in the listing (text, category, age rating 4+, free, 175 storefronts, copyright, content rights, review notes) | done | build 261103.1237 attached to 1.0; `scripts/release.sh --upload`, `scripts/asc-listing.py` |
+| 11 | In App Store Connect (web only): App Privacy answers, regulated-medical-device declaration (App Information), EU Digital Services Act trader status, and the review contact phone (Apple requires one) | Jacob | waiting |
+| 12 | Add for Review, then Submit (releases automatically once approved) | Jacob's go-ahead | |
 
 ## Known gaps worth a decision
 
