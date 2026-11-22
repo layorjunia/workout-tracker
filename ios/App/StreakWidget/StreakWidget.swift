@@ -51,27 +51,33 @@ struct StepProvider: TimelineProvider {
     }
 }
 
-// Week-milestone ladder — mirrored in app.js streakTier()
-struct Tier {
-    let emoji: String
-    let label: String
-    let color: Color
-    let milestone: Bool
+// MARK: Look
+// The app's own look: the icon's two colors, progress running from blue-violet to mint, rings and
+// bars instead of pictures. Numbers and arrows only; no emoji.
+
+enum Brand {
+    static let blue = Color(red: 0.478, green: 0.553, blue: 1.0)
+    static let mint = Color(red: 0.204, green: 0.890, blue: 0.698)
+    static let amber = Color(red: 1.0, green: 0.706, blue: 0.329)
+    static var sweep: LinearGradient { LinearGradient(colors: [blue, mint], startPoint: .leading, endPoint: .trailing) }
 }
-func tierFor(_ streak: Int) -> Tier {
-    if streak <= 0 { return Tier(emoji: "·", label: "", color: .blue, milestone: false) }
-    let w = streak / 7
-    let milestone = streak % 7 == 0
-    switch w {
-    case 0:  return Tier(emoji: "🔥", label: "", color: .blue, milestone: false)
-    case 1:  return Tier(emoji: "⚡", label: "WEEK 1", color: .orange, milestone: milestone)
-    case 2:  return Tier(emoji: "🌟", label: "WEEK 2", color: .pink, milestone: milestone)
-    case 3:  return Tier(emoji: "💎", label: "WEEK 3", color: .cyan, milestone: milestone)
-    case 4, 5: return Tier(emoji: "👑", label: "1 MONTH+", color: .yellow, milestone: milestone)
-    case 6, 7: return Tier(emoji: "🏆", label: "WEEK \(w)", color: .yellow, milestone: milestone)
-    default: return Tier(emoji: "🐐", label: "WEEK \(w)", color: .purple, milestone: milestone)
+
+/// Deep navy with a blue glow top left and a mint one bottom right; a soft blue-white by day.
+struct StepBackdrop: View {
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let dark = scheme == .dark
+        ZStack {
+            LinearGradient(colors: dark ? [Color(red: 0.078, green: 0.094, blue: 0.165), Color(red: 0.035, green: 0.043, blue: 0.078)]
+                                        : [Color(red: 0.965, green: 0.972, blue: 1.0), Color(red: 0.918, green: 0.953, blue: 0.965)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            RadialGradient(colors: [Brand.blue.opacity(dark ? 0.30 : 0.20), .clear], center: .topLeading, startRadius: 0, endRadius: 200)
+            RadialGradient(colors: [Brand.mint.opacity(dark ? 0.16 : 0.14), .clear], center: .bottomTrailing, startRadius: 0, endRadius: 180)
+        }
     }
 }
+
 func fmtSteps(_ n: Int) -> String {
     if n < 1000 { return "\(n)" }
     let k = Double(n) / 1000.0
@@ -89,97 +95,178 @@ func fmtGoal(_ n: Int) -> String {
     return fmtSteps(v)
 }
 
-/// Ten medals, one per 10%: the bar is ten segments that fill in turn.
-struct MedalBar: View {
+/// Today's progress: a ring that sweeps from blue to mint, and turns mint with a glow once the goal is met.
+struct GradientRing: View {
+    let pct: Double
+    let done: Bool
+    var lineWidth: CGFloat = 8
+
+    var body: some View {
+        let sweep = max(0.02, min(1, pct))
+        ZStack {
+            Circle().inset(by: lineWidth / 2).stroke(Color.primary.opacity(0.10), lineWidth: lineWidth)
+            if pct > 0 {
+            Circle().inset(by: lineWidth / 2)
+                .trim(from: 0, to: sweep)
+                .stroke(done ? AnyShapeStyle(Brand.mint)
+                             : AnyShapeStyle(AngularGradient(colors: [Brand.blue, Brand.mint], center: .center,
+                                                             startAngle: .degrees(0), endAngle: .degrees(360 * sweep))),
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .shadow(color: done ? Brand.mint.opacity(0.55) : .clear, radius: 5)
+            }
+        }
+    }
+}
+
+/// The long-term goal as ten segments, one per 10%, filled blue to mint along the bar.
+struct SegmentBar: View {
     let fraction: Double
-    let tint: Color
+    var done = false
+    var height: CGFloat = 6
 
     var body: some View {
         GeometryReader { geo in
             let gap: CGFloat = 2
             let w = (geo.size.width - gap * 9) / 10
-            HStack(spacing: gap) {
-                ForEach(0..<10, id: \.self) { i in
-                    let f = max(0, min(1, fraction * 10 - Double(i)))
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 2).fill(Color.primary.opacity(0.12))
-                        RoundedRectangle(cornerRadius: 2).fill(tint).frame(width: f > 0 ? max(2, w * f) : 0)
+            ZStack(alignment: .leading) {
+                HStack(spacing: gap) {
+                    ForEach(0..<10, id: \.self) { _ in
+                        RoundedRectangle(cornerRadius: 2.5).fill(Color.primary.opacity(0.10)).frame(width: w)
                     }
-                    .frame(width: w)
+                }
+                fillStyle.mask(alignment: .leading) {
+                    HStack(spacing: gap) {
+                        ForEach(0..<10, id: \.self) { i in
+                            let f = max(0, min(1, fraction * 10 - Double(i)))
+                            ZStack(alignment: .leading) {
+                                if f > 0 { RoundedRectangle(cornerRadius: 2.5).frame(width: max(2.5, w * f)) }
+                            }
+                            .frame(width: w, alignment: .leading)
+                        }
+                    }
                 }
             }
         }
-        .frame(height: 6)
+        .frame(height: height)
+    }
+
+    @ViewBuilder private var fillStyle: some View {
+        if done { Brand.mint } else { Brand.sweep }
     }
 }
 
-/// The long-term goal as one glanceable line: how far along, and the daily
-/// average the remaining days need. That average is the only signal — it comes
-/// down as you walk more and goes up when you walk less.
-struct GoalRow: View {
+/// A day of steps against the goal: a bar that fills toward it, full and mint once the day counts.
+struct DayBar: View {
+    let day: StepDay
+    let goal: Int
+    let isToday: Bool
+    var height: CGFloat = 24
+
+    var body: some View {
+        let frac = day.hit ? 1 : min(1, Double(day.steps) / Double(max(1, goal)))
+        ZStack(alignment: .bottom) {
+            RoundedRectangle(cornerRadius: 3).fill(Color.primary.opacity(0.09))
+            RoundedRectangle(cornerRadius: 3)
+                .fill(fill)
+                .frame(height: day.steps > 0 ? max(3, height * frac) : 0)
+        }
+        .frame(height: height)
+        .overlay(RoundedRectangle(cornerRadius: 3).stroke(isToday ? Color.primary.opacity(0.55) : .clear, lineWidth: 1))
+    }
+
+    private var fill: AnyShapeStyle {
+        if day.hit { return AnyShapeStyle(Brand.mint) }
+        if day.counts { return AnyShapeStyle(Brand.mint.opacity(0.55)) }
+        return AnyShapeStyle(Brand.blue.opacity(0.7))
+    }
+}
+
+/// The last seven days, with their weekday letters.
+struct WeekBars: View {
+    let days: [StepDay]
+    let goal: Int
+    let today: String
+    var height: CGFloat = 24
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 5) {
+            ForEach(Array(days.enumerated()), id: \.offset) { _, d in
+                VStack(spacing: 3) {
+                    DayBar(day: d, goal: goal, isToday: d.date == today, height: height)
+                    Text(letter(d.date))
+                        .font(.system(size: 8, weight: .heavy))
+                        .foregroundStyle(d.date == today ? Color.primary : Color.secondary.opacity(0.7))
+                }
+            }
+        }
+    }
+
+    private func letter(_ key: String) -> String {
+        let cal = StepEngine.calendar()
+        guard let d = StepEngine.startOfDay(key, cal) else { return "" }
+        let i = (cal.component(.weekday, from: d) + 5) % 7        // Monday 0 … Sunday 6
+        return String(Array("MTWTFSS")[i])
+    }
+}
+
+/// The long-term goal as one glanceable line: how far along, and the daily average the remaining days
+/// need. That average is the only signal; it comes down as you walk more and goes up when you walk less.
+struct GoalLine: View {
     let g: LongGoalProgress
     var compact = false
 
-    /// Blue while it's being worked on, green once it's done.
-    var barTint: Color { g.phase == .reached ? .green : .blue }
     var pct: String { "\(Int((min(g.percent, 9.99) * 100).rounded(.down)))%" }
-    /// How far the daily need has moved from the plan's even average.
     var lowered: Int { g.loweredBy }
-    var loweredText: String { "\(lowered > 0 ? "▼" : "▲")\(fmtGoal(lowered))" }
-    var loweredColor: Color { lowered > 0 ? .green : .orange }
+    var loweredText: String { "\(lowered > 0 ? "▼" : "▲")\(fmtGoal(abs(lowered)))" }
+    var loweredColor: Color { lowered > 0 ? Brand.mint : Brand.amber }
     /// Words for the phases that have no daily need to show.
     var status: String {
         switch g.phase {
         case .upcoming: return "starts in \(g.startsIn)d"
-        case .reached: return "done ✓"
+        case .reached: return "done"
         case .ended: return "\(fmtGoal(max(0, g.target - g.total))) short"
         case .active: return ""
         }
     }
-    var statusColor: Color { g.phase == .reached ? .green : .secondary }
 
     var body: some View {
         if compact {
-            HStack(spacing: 4) {
-                Text("🎯").font(.system(size: 11))
-                Text(pct).font(.system(size: 12, weight: .heavy))
-                if g.phase == .active {
-                    Text("\(fmtGoal(g.perDay))/d").font(.system(size: 11, weight: .heavy))
-                    if lowered != 0 { Text(loweredText).font(.system(size: 10, weight: .heavy)).foregroundStyle(loweredColor) }
-                } else {
-                    Text(status).font(.system(size: 11, weight: .semibold)).foregroundStyle(statusColor)
+            VStack(spacing: 5) {
+                SegmentBar(fraction: min(1, g.percent), done: g.phase == .reached, height: 5)
+                HStack(spacing: 4) {
+                    Text(pct).font(.system(size: 12, weight: .heavy)).monospacedDigit().lineLimit(1)
+                    Spacer(minLength: 0)
+                    if g.phase == .active {
+                        Text("\(fmtGoal(g.perDay))/day").font(.system(size: 11, weight: .bold)).foregroundStyle(.secondary).monospacedDigit()
+                            .lineLimit(1).minimumScaleFactor(0.7)
+                        if lowered != 0 {
+                            Text(loweredText).font(.system(size: 10, weight: .heavy)).foregroundStyle(loweredColor).monospacedDigit()
+                                .lineLimit(1).minimumScaleFactor(0.7)
+                        }
+                    } else {
+                        Text(status).font(.system(size: 11, weight: .semibold)).foregroundStyle(g.phase == .reached ? Brand.mint : .secondary)
+                            .lineLimit(1).minimumScaleFactor(0.7)
+                    }
                 }
             }
-            .lineLimit(1).minimumScaleFactor(0.7)
         } else {
-            HStack(spacing: 7) {
-                Text("🎯").font(.system(size: 12))
-                MedalBar(fraction: min(1, g.percent), tint: barTint)
-                Text(pct).font(.system(size: 12, weight: .heavy))
+            HStack(spacing: 8) {
+                Text(fmtGoal(g.target)).font(.system(size: 11, weight: .heavy)).foregroundStyle(.secondary)
+                SegmentBar(fraction: min(1, g.percent), done: g.phase == .reached)
+                Text(pct).font(.system(size: 12, weight: .heavy)).monospacedDigit().lineLimit(1)
                 if g.phase == .active {
-                    Text("\(fmtGoal(g.perDay))/day").font(.system(size: 12, weight: .heavy))
-                    if lowered != 0 { Text(loweredText).font(.system(size: 11, weight: .heavy)).foregroundStyle(loweredColor) }
+                    Text("\(g.perDay.formatted())/day").font(.system(size: 12, weight: .bold)).foregroundStyle(.secondary).monospacedDigit()
+                        .lineLimit(1).minimumScaleFactor(0.75)
+                    if lowered != 0 {
+                        Text(loweredText).font(.system(size: 11, weight: .heavy)).foregroundStyle(loweredColor).monospacedDigit()
+                            .lineLimit(1).minimumScaleFactor(0.75)
+                    }
                 } else {
-                    Text(status).font(.system(size: 11, weight: .semibold)).foregroundStyle(statusColor)
+                    Text(status).font(.system(size: 11, weight: .semibold)).foregroundStyle(g.phase == .reached ? Brand.mint : .secondary)
+                        .lineLimit(1).minimumScaleFactor(0.75)
                 }
             }
-            .lineLimit(1).minimumScaleFactor(0.8)
-        }
-    }
-}
-
-struct RingView: View {
-    let pct: Double
-    let done: Bool
-    let tint: Color
-    var lineWidth: CGFloat = 7
-    var body: some View {
-        ZStack {
-            Circle().stroke(Color.primary.opacity(0.12), lineWidth: lineWidth)
-            Circle()
-                .trim(from: 0, to: max(0.02, min(1, pct)))
-                .stroke(done ? Color.green : tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                .rotationEffect(.degrees(-90))
         }
     }
 }
@@ -190,89 +277,81 @@ struct StreakWidgetView: View {
 
     var body: some View {
         let s = entry.summary
-        let pct = s.goal > 0 ? Double(s.todaySteps) / Double(s.goal) : 0
-        let tier = tierFor(s.streak)
-        let weekHit = s.workoutsThisWeek >= s.workoutGoal
         switch family {
-        case .systemMedium:
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 16) {
-                    ring(s: s, pct: pct, tier: tier, weekHit: weekHit)
-                    VStack(alignment: .leading, spacing: 5) {
-                        HStack(spacing: 7) {
-                            flame(s: s, tier: tier)
-                            tierBadge(tier, large: true)
-                        }
-                        Text("\(s.todaySteps.formatted()) / \(s.goal.formatted()) steps")
-                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
-                        Text("🏋️ \(s.workoutsThisWeek)/\(s.workoutGoal) workouts\(weekHit ? " ✓" : "")")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(weekHit ? Color.green : Color.purple)
-                        HStack(spacing: 5) {
-                            ForEach(Array(s.last14.suffix(7).enumerated()), id: \.offset) { _, d in
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(d.counts ? Color.green
-                                          : (d.hasData && d.date != s.date ? Color.red.opacity(0.35) : Color.primary.opacity(0.12)))
-                                    .frame(width: 16, height: 16)
-                            }
-                        }
-                    }
-                    Spacer(minLength: 0)
+        case .systemMedium: medium(s)
+        default: small(s)
+        }
+    }
+
+    // Today's steps in a ring, the streak beside it, the long-term goal underneath.
+    func small(_ s: StepSummary) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                ring(s, size: 68, line: 8, caption: false)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("\(s.streak)")
+                        .font(.system(size: s.streak >= 100 ? 23 : 30, weight: .heavy)).monospacedDigit()
+                        .foregroundStyle(s.streak > 0 ? Brand.mint : Color.secondary)
+                        .minimumScaleFactor(0.6).lineLimit(1).fixedSize()
+                    Text(s.streak == 1 ? "DAY" : "DAYS")
+                        .font(.system(size: 9, weight: .heavy)).tracking(1.2).foregroundStyle(.secondary)
                 }
-                if let g = s.longGoal { GoalRow(g: g) }
+                Spacer(minLength: 0)
             }
-        default:
-            VStack(spacing: 6) {
-                ring(s: s, pct: pct, tier: tier, weekHit: weekHit, size: s.longGoal == nil ? 66 : 58)
-                flame(s: s, tier: tier)
-                tierBadge(tier, large: false)
-                if let g = s.longGoal { GoalRow(g: g, compact: true) }
-            }
+            if let g = s.longGoal { GoalLine(g: g, compact: true) }
+            else { workouts(s) }
         }
     }
 
-    /// Week-milestone badge; nothing until the first full week.
-    @ViewBuilder
-    func tierBadge(_ tier: Tier, large: Bool) -> some View {
-        if tier.milestone {
-            Text(large ? "✨ \(tier.label)! ✨" : "✨ \(tier.label) ✨")
-                .font(.system(size: large ? 12 : 10, weight: .heavy))
-                .foregroundStyle(tier.color)
-        } else if !tier.label.isEmpty {
-            if large {
-                Text(tier.label)
-                    .font(.system(size: 10, weight: .heavy))
-                    .tracking(1)
-                    .padding(.horizontal, 7).padding(.vertical, 2)
-                    .background(tier.color.opacity(0.18), in: Capsule())
-                    .foregroundStyle(tier.color)
-            } else {
-                Text(tier.label).font(.system(size: 9, weight: .heavy)).tracking(1).foregroundStyle(tier.color)
+    // The ring, the streak and the week's seven days; then the long-term goal.
+    func medium(_ s: StepSummary) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 14) {
+                ring(s, size: 90, line: 10, caption: true)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        Text("\(s.streak)")
+                            .font(.system(size: s.streak >= 100 ? 26 : 32, weight: .heavy)).monospacedDigit()
+                            .foregroundStyle(s.streak > 0 ? Brand.mint : Color.secondary)
+                            .lineLimit(1).fixedSize()
+                        Text(s.streak >= 100 ? "days" : "day streak").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                            .lineLimit(1).minimumScaleFactor(0.8)
+                        Spacer(minLength: 0)
+                        workouts(s)
+                    }
+                    WeekBars(days: Array(s.last14.suffix(7)), goal: s.goal, today: s.date, height: 24)
+                }
             }
+            if let g = s.longGoal { GoalLine(g: g) }
         }
     }
 
-    // Outer ring: today's steps. Inner ring: workouts this week vs goal.
-    func ring(s: StepSummary, pct: Double, tier: Tier, weekHit: Bool, size: CGFloat = 66) -> some View {
-        let wkPct = s.workoutGoal > 0 ? Double(s.workoutsThisWeek) / Double(s.workoutGoal) : 0
-        let k = size / 66
+    /// Today against the goal. The small widget shows only the count, the medium one the goal as well.
+    func ring(_ s: StepSummary, size: CGFloat, line: CGFloat, caption: Bool) -> some View {
+        let pct = s.goal > 0 ? Double(s.todaySteps) / Double(s.goal) : 0
         return ZStack {
-            RingView(pct: pct, done: s.goalMet, tint: s.streak >= 7 ? tier.color : .blue, lineWidth: 7 * k)
-            RingView(pct: wkPct, done: weekHit, tint: .purple, lineWidth: 5 * k)
-                .frame(width: 46 * k, height: 46 * k)
-            Text(fmtSteps(s.todaySteps))
-                .font(.system(size: 13 * k, weight: .heavy))
-                .minimumScaleFactor(0.5).lineLimit(1)
-                .frame(maxWidth: 34 * k)
+            GradientRing(pct: pct, done: s.goalMet, lineWidth: line)
+            VStack(spacing: 1) {
+                Text(caption ? s.todaySteps.formatted() : fmtSteps(s.todaySteps))
+                    .font(.system(size: size * (caption ? 0.19 : 0.21), weight: .heavy)).monospacedDigit()
+                    .minimumScaleFactor(0.5).lineLimit(1)
+                if caption {
+                    Text("of \(s.goal.formatted())").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
+                        .minimumScaleFactor(0.7).lineLimit(1)
+                }
+            }
+            .padding(.horizontal, line + 5)
         }
         .frame(width: size, height: size)
     }
 
-    func flame(s: StepSummary, tier: Tier) -> some View {
-        HStack(spacing: 4) {
-            Text(tier.emoji)
-            Text("\(s.streak)").font(.system(size: 17, weight: .heavy))
-            Text(s.streak == 1 ? "day" : "days").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+    func workouts(_ s: StepSummary) -> some View {
+        let hit = s.workoutsThisWeek >= s.workoutGoal
+        return HStack(spacing: 4) {
+            Text("\(s.workoutsThisWeek)/\(s.workoutGoal)").font(.system(size: 13, weight: .heavy)).monospacedDigit()
+                .foregroundStyle(hit ? Brand.mint : Color.primary)
+            Text("workouts").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                .lineLimit(1).minimumScaleFactor(0.75)
         }
     }
 }
@@ -281,14 +360,11 @@ struct StreakWidgetView: View {
 struct StreakWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "StreakWidget", provider: StepProvider()) { entry in
-            if #available(iOS 17.0, *) {
-                StreakWidgetView(entry: entry).containerBackground(.fill.tertiary, for: .widget)
-            } else {
-                StreakWidgetView(entry: entry).padding()
-            }
+            StreakWidgetView(entry: entry)
+                .containerBackground(for: .widget) { StepBackdrop() }
         }
         .configurationDisplayName("Steps & Streak")
-        .description("Today's steps and your goal streak.")
+        .description("Today's steps, your streak and your step goal.")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }

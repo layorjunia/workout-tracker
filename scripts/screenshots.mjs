@@ -25,7 +25,7 @@ const SHOTS = [                                   // [file name, demo page query
   ["01-today", "view=today&scrollY=330"],
   ["02-progress", "view=progress&scrollTo=%23progress-exercise&pad=150"],
   ["03-steps", "view=steps"],
-  ["04-activity", "view=steps&scrollTo=%23steps-chart-wrap&pad=150"],
+  ["04-analytics", "view=goals&seg=analytics"],
   ["05-goals", "view=goals"],
   ["06-health", "view=health&scrollTo=%23health-snapshot&pad=185"],
 ];

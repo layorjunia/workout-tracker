@@ -120,7 +120,7 @@ public class StreakBridgePlugin: CAPPlugin, CAPBridgedPlugin {
         let remaining = max(0, goal - stepsToday)
         let content = UNMutableNotificationContent()
         if streak > 0 {
-            content.title = "🔥 \(streak)-day streak on the line"
+            content.title = "\(streak)-day streak on the line"
             content.body = "\(remaining.formatted()) steps to go before midnight."
         } else {
             content.title = "Step goal check"

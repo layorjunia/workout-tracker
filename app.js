@@ -2875,7 +2875,7 @@ function floatText(text, rect, color) {
 // seen for the first time fills from empty.
 const fxSeen = new Map();
 const painted = new Map(), busy = new Map(), waiting = new Map();
-const FX_HOSTS = { goals: ["#goals-list"], steps: ["#steps-card", "#steps-chart", "#steps-activity", "#steps-records", "#goal-card"] };
+const FX_HOSTS = { goals: ["#goals-list", "#an-tiles", "#an-chart", "#an-activity", "#an-records", "#an-best"], steps: ["#steps-card", "#goal-card"] };
 // Opening a tab starts its numbers over from empty
 const forgetFx = (surface) => {
   for (const k of [...fxSeen.keys()]) if (k.startsWith(surface + "|")) fxSeen.delete(k);
@@ -3126,7 +3126,7 @@ function miniBarsSVG(list, avg) {
 
 // Steps work in whole numbers and have a meter from the plan's starting average down to the
 // daily goal; rep goals work in tenths. `days` (date -> count) draws the last month as bars.
-function goalCardHTML(g, { title, floor = null, decimals = false, todayN = 0, card = "", surface = "goals", color = "var(--accent)", days = null } = {}) {
+function goalCardHTML(g, { title, unit = "", floor = null, decimals = false, todayN = 0, card = "", surface = "goals", color = "var(--accent)", days = null } = {}) {
   const done = g.phase === "reached";
   const rk = (field) => `${surface}|${card}|${field}`;
   const pct = Math.floor(Math.min(g.percent, 9.99) * 100);
@@ -3164,7 +3164,7 @@ function goalCardHTML(g, { title, floor = null, decimals = false, todayN = 0, ca
           <div class="wk-bar${atGoal ? " good" : ""}"><i style="width:${f > 0 ? Math.max(2, f * 100).toFixed(1) : 0}%"></i></div>
           <em>${fmt(floor)}${atGoal ? " ✓" : ""}</em></div>`;
     }
-    need = `<div class="lg-need"><div class="lg-need-top"><span><strong>${perDayText(decimals ? g.need : g.perDay)}</strong> per day <em>· ${plural(g.daysLeft, "day")} left</em></span>${delta}</div>${meter}</div>`;
+    need = `<div class="lg-need"><div class="lg-need-top"><span class="d-kicker">Needed each day</span>${delta}</div><div class="lg-need-main"><strong>${perDayText(decimals ? g.need : g.perDay)}</strong><span>${unit ? `${unit} a day` : "a day"} · ${plural(g.daysLeft, "day")} left</span></div>${meter}</div>`;
   }
   let bars = "";
   if (days && g.phase !== "upcoming") {
@@ -3196,7 +3196,7 @@ function renderLongGoal(g, floor = state.settings.stepGoal || 10000, v = null) {
   const plan = state.settings.stepLongGoal;
   const todaySteps = v?.todaySteps || 0;
   paint(host, g ? goalCardHTML(g, {
-    title: `${fmt(g.target)} steps`, floor, todayN: todaySteps, card: "steps", surface: "steps",
+    title: `${fmt(g.target)} steps`, unit: "steps", floor, todayN: todaySteps, card: "steps", surface: "steps",
     days: plan ? stepDays(plan, v?.today || todayISO(), todaySteps) : null,
   }) : "", true);
 }
@@ -3290,7 +3290,7 @@ function repGoalHTML(goal) {
   const name = escapeHtml(goal.name);
   const editing = goalEditing === goal.id;
   const showHistory = goalHistoryOpen.has(goal.id);
-  const body = g ? goalCardHTML(g, { title: name, decimals: true, todayN, card: goal.id, color: repLook(goal)[1], days })
+  const body = g ? goalCardHTML(g, { title: name, unit: "reps", decimals: true, todayN, card: goal.id, color: repLook(goal)[1], days })
                  : `<div class="lg-head"><strong>${name}</strong></div>`;
   const field = (key, label, value, attrs = "") =>
     `<label class="col"><span class="label">${label}</span><input ${attrs} data-gl-field="${key}" data-id="${goal.id}" value="${escapeHtml(value)}"></label>`;
@@ -3358,14 +3358,20 @@ function recordsHTML(snaps, today = todayISO()) {
     `<div class="rc-row"><span>${escapeHtml(s.name)}</span><strong>${fmt(b.n)}</strong><em${b.date === today ? ' class="now"' : ""}>${b.date === today ? "Today" : longDate(b.date)}</em></div>`).join("")}</div>`;
 }
 
+let goalsSeg = "goals";               // which view of the Goals tab is open: "goals" or "analytics"
+
 function renderGoals(auto = false) {
   const host = $("#goals-list");
   if (!host) return;
+  $$("#goals-seg [data-gseg]").forEach(b => b.classList.toggle("active", b.dataset.gseg === goalsSeg));
+  $("#gseg-goals")?.classList.toggle("hidden", goalsSeg !== "goals");
+  $("#gseg-analytics")?.classList.toggle("hidden", goalsSeg !== "analytics");
   const v = stepView(), snaps = goalSnapshots();
+  if (goalsSeg === "analytics") { renderGoalsAnalytics(v, snaps, auto); return; }
   const steps = v.longGoal
-    ? `<div class="card gl-card" data-goal="steps">${goalCardHTML(v.longGoal, { title: `${fmt(v.longGoal.target)} steps`, floor: v.goal, todayN: v.todaySteps || 0, card: "steps", surface: "goals", days: snaps.find(x => x.card === "steps")?.days || null })}</div>` : "";
+    ? `<div class="card gl-card" data-goal="steps">${goalCardHTML(v.longGoal, { title: `${fmt(v.longGoal.target)} steps`, unit: "steps", floor: v.goal, todayN: v.todaySteps || 0, card: "steps", surface: "goals", days: snaps.find(x => x.card === "steps")?.days || null })}</div>` : "";
   const cards = steps + state.goals.map(repGoalHTML).join("");
-  paint(host, todayStripHTML(snaps) + (cards ? `<div class="goal-grid">${cards}</div>` : "") + recordsHTML(snaps), auto);
+  paint(host, todayStripHTML(snaps) + (cards ? `<div class="goal-grid">${cards}</div>` : ""), auto);
 }
 
 // For refreshes nobody asked for: never redraw under a half-typed number.
@@ -3482,15 +3488,33 @@ function stepsModel(v) {
 }
 
 const dTile = (label, value, { sub = "", roll = null, key = "", hot = false } = {}) =>
-  `<div class="d-tile${hot ? " hot" : ""}"><span>${label}</span><strong${roll != null ? ` data-roll="${roll}" data-rk="steps|hero|${key}"` : ""}>${value}</strong>${sub ? `<em>${sub}</em>` : ""}</div>`;
+  `<div class="d-tile${hot ? " hot" : ""}"><span>${label}</span><strong${roll != null ? ` data-roll="${roll}" data-rk="goals|an|${key}"` : ""}>${value}</strong>${sub ? `<em>${sub}</em>` : ""}</div>`;
 
-function stepsHeroHTML(v, M) {
-  const { st, goal } = M, n = v.todaySteps || 0, met = n >= goal, p = Math.min(1, n / Math.max(1, goal));
+// The Steps tab: today against the daily goal, the streak, and the week so far.
+function stepsHeroHTML(v) {
+  const goal = v.goal || 10000, n = v.todaySteps || 0, met = n >= goal, p = Math.min(1, n / Math.max(1, goal));
   const R = 52, C = 2 * Math.PI * R;
   const ring = `<div class="d-ring"><svg viewBox="0 0 120 120" aria-hidden="true"><defs><linearGradient id="d-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--g1)"/><stop offset="1" stop-color="var(--g2)"/></linearGradient></defs><circle class="trk" cx="60" cy="60" r="${R}"/><circle class="arc${met ? " met" : ""}${p > 0 ? "" : " zero"}" cx="60" cy="60" r="${R}" stroke="url(#d-grad)" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C * (1 - p)).toFixed(1)}" data-dial="${p.toFixed(4)}" data-rk="steps|hero|ring"/></svg><div class="d-ring-num"><strong${n >= 100000 ? ' class="long"' : ""} data-roll="${n}" data-rk="steps|hero|n">${fmt(n)}</strong><span>of ${fmt(goal)}</span></div></div>`;
-  const side = met
-    ? `<div class="d-side"><span class="d-kicker good">Goal met</span><strong class="d-big good">${n > goal ? `+${fmt(n - goal)}` : "Done"}</strong><span class="d-sub">${Math.floor(n / goal * 100)}% of the goal</span></div>`
-    : `<div class="d-side"><span class="d-kicker">To go</span><strong class="d-big">${fmt(goal - n)}</strong><span class="d-sub">${Math.floor(p * 100)}% of the goal</span></div>`;
+  const left = met
+    ? `<span class="d-kicker good">Goal met</span><strong class="d-big good">${n > goal ? `+${fmt(n - goal)}` : "Done"}</strong>`
+    : `<span class="d-kicker">To go</span><strong class="d-big">${fmt(goal - n)}</strong>`;
+  const streak = `<div class="d-streak"><strong data-roll="${v.streak}" data-rk="steps|hero|streak">${fmt(v.streak)}</strong><span>day streak</span>${v.todayCounts ? "<em>today ✓</em>" : v.streak > 0 ? "<em>today pending</em>" : ""}</div>`;
+  const meter = (label, have, need, hit, text) =>
+    `<div class="wk-goal${hit ? " hit" : ""}"><span>${label}</span><div class="wk-bar"><i style="width:${Math.min(100, have / Math.max(1, need) * 100).toFixed(0)}%"></i></div><strong>${text}</strong></div>`;
+  const wHit = v.workouts >= v.workoutGoal, sHit = v.weekTotal >= v.weekTarget;
+  return `
+    <div class="d-top"><span class="d-kicker">Today</span><span class="d-date">${prettyDate(v.today)}</span></div>
+    <div class="d-hero-main">${ring}<div class="d-side">${left}${streak}</div></div>
+    <div class="d-week">
+      <div class="d-kicker">This week</div>
+      ${meter("Steps", v.weekTotal, v.weekTarget, sHit, `${fmt(v.weekTotal)} / ${fmt(v.weekTarget)}${sHit ? " ✓" : ""}`)}
+      ${meter("Workouts", v.workouts, v.workoutGoal, wHit, `${v.workouts} / ${v.workoutGoal}${wHit ? " ✓" : ""}`)}
+    </div>`;
+}
+
+// The six figures that open the Analytics view.
+function stepsTilesHTML(v, M) {
+  const { st } = M;
   const tiles = [
     dTile("This week", fmt(st.week), { roll: st.week, key: "week" }),
     dTile("This month", fmt(st.month), { roll: st.month, key: "month" }),
@@ -3499,15 +3523,7 @@ function stepsHeroHTML(v, M) {
     dTile("Total steps", st.count ? bigNum(st.total) : "—", { sub: st.count ? `since ${longDate(st.first)}` : "", roll: st.count && st.total < 1e6 ? st.total : null, key: "total" }),
     dTile("Days at goal", st.count ? fmt(st.hit) : "—", { sub: st.count ? `of ${fmt(st.count)} days` : "", roll: st.count ? st.hit : null, key: "hit" }),
   ].join("");
-  const meter = (label, have, need, hit, text) =>
-    `<div class="wk-goal${hit ? " hit" : ""}"><span>${label}</span><div class="wk-bar"><i style="width:${Math.min(100, have / Math.max(1, need) * 100).toFixed(0)}%"></i></div><strong>${text}</strong></div>`;
-  const wHit = v.workouts >= v.workoutGoal, sHit = v.weekTotal >= v.weekTarget;
-  return `
-    <div class="d-top"><span class="d-kicker">Today</span><span class="d-date">${prettyDate(M.today)}</span></div>
-    <div class="d-hero-main">${ring}${side}</div>
-    <div class="d-tiles">${tiles}</div>
-    ${meter("Workouts this week", v.workouts, v.workoutGoal, wHit, `${v.workouts}/${v.workoutGoal}${wHit ? " ✓" : ""}`)}
-    ${meter("Steps this week", v.weekTotal, v.weekTarget, sHit, `${fmt(v.weekTotal)}/${fmt(v.weekTarget)}${sHit ? " ✓" : ""}`)}`;
+  return `<div class="d-head"><span class="d-kicker">Steps</span><span class="d-read">${st.count ? `since ${longDate(st.first)}` : ""}</span></div><div class="d-tiles">${tiles}</div>`;
 }
 
 // A bar for each of the last 90 days, drawn at the card's own width so its text stays crisp.
@@ -3547,7 +3563,7 @@ function stepsChartHTML(v, M, width) {
   const read = pickedDay ? `${prettyDate(picked)} · ${pickedDay.n > 0 ? fmt(pickedDay.n) : "no data"}` : `Last ${n} ${days}`;
   return `
     <div class="d-head"><span class="d-kicker">Daily steps</span><span class="d-read" data-def="Last ${n} ${days}">${read}</span></div>
-    <svg class="dc" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" data-grow data-rk="steps|chart|bars" role="img" aria-label="Daily steps for the last ${n} ${days}, goal ${fmt(goal)}">
+    <svg class="dc" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" data-grow data-rk="goals|an|bars" role="img" aria-label="Daily steps for the last ${n} ${days}, goal ${fmt(goal)}">
       ${grid}<line class="g base" x1="${L}" x2="${W - RT}" y1="${base}" y2="${base}"/>
       ${bars}
       <line class="goal" x1="${L}" x2="${W - RT}" y1="${f(y(goal))}" y2="${f(y(goal))}"/>
@@ -3628,19 +3644,28 @@ function renderSteps(auto = true) {
   if (calB && !calB.value && state.settings.stepCalActual) calB.value = state.settings.stepCalActual;
   syncLongGoalFields();
   // Until the phone has answered, show what the app last knew, dimmed.
-  $("#view-steps")?.classList.toggle("provisional", !!stepBridge() && !nativeSteps);
+  const waiting = !!stepBridge() && !nativeSteps;
+  $("#view-steps")?.classList.toggle("provisional", waiting);
+  $("#view-goals")?.classList.toggle("provisional", waiting);
 
   const v = stepView();
   renderLongGoal(v.longGoal, v.goal, v);
-  const M = stepsModel(v);
+  paint(host, stepsHeroHTML(v), auto);
+}
+
+// The Analytics view of the Goals tab: figures, the daily bars, the grid of weeks, records.
+function renderGoalsAnalytics(v, snaps, auto) {
+  const M = stepsModel(v), has = M.list.length > 0;
   if (stepPick.date && !M.days.has(stepPick.date)) stepPick = { date: "", src: "" };
-  paint(host, stepsHeroHTML(v, M), auto);
-  const has = M.list.length > 0, wraps = ["chart", "activity", "records"].map(k => $(`#steps-${k}-wrap`));
-  wraps.forEach(w => w?.classList.toggle("hidden", !has));
-  const width = $("#steps-chart")?.clientWidth || 0;            // measured while its card is showing
-  if (!stepScrub) paint($("#steps-chart"), has ? stepsChartHTML(v, M, width) : "", auto);
-  paint($("#steps-activity"), has ? stepsActivityHTML(v, M) : "", auto);
-  paint($("#steps-records"), has ? stepsRecordsHTML(v, M) : "", auto);
+  for (const k of ["tiles", "chart", "activity", "records"]) $(`#an-${k}-wrap`)?.classList.toggle("hidden", !has);
+  const width = $("#an-chart")?.clientWidth || 0;               // measured while its card is showing
+  paint($("#an-tiles"), has ? stepsTilesHTML(v, M) : "", auto);
+  if (!stepScrub) paint($("#an-chart"), has ? stepsChartHTML(v, M, width) : "", auto);
+  paint($("#an-activity"), has ? stepsActivityHTML(v, M) : "", auto);
+  paint($("#an-records"), has ? stepsRecordsHTML(v, M) : "", auto);
+  const best = recordsHTML(snaps);
+  paint($("#an-best"), best, auto);
+  $("#an-empty")?.classList.toggle("hidden", has || !!best);
 }
 
 function stepDayDetail(v, M, date) {
@@ -3671,17 +3696,19 @@ function stepDayDetail(v, M, date) {
 }
 
 // Opening a day from the chart or the grid, scrubbing across the chart, and keeping it fitted to its card.
-function bindSteps() {
-  const view = $("#view-steps"), chart = $("#steps-chart");
+function bindAnalytics() {
+  const view = $("#view-goals"), chart = $("#an-chart");
   if (!view || !chart) return;
   const open = (date, src) => {
     stepPick = stepPick.date === date && stepPick.src === src ? { date: "", src: "" } : { date, src };
-    renderSteps(false);
+    renderGoals(false);
   };
   view.addEventListener("click", (e) => {
+    const seg = e.target.closest("[data-gseg]");
+    if (seg) { goalsSeg = seg.dataset.gseg; forgetFx("goals"); renderGoals(); window.scrollTo(0, 0); return; }
     const cell = e.target.closest(".d-cell[data-d]");
     if (cell) { haptic("tick"); open(cell.dataset.d, "grid"); return; }
-    if (e.target.closest("[data-pick-close]")) { stepPick = { date: "", src: "" }; renderSteps(false); return; }
+    if (e.target.closest("[data-pick-close]")) { stepPick = { date: "", src: "" }; renderGoals(false); return; }
     const w = e.target.closest("[data-workout]");
     if (w) { activeWorkoutId = w.dataset.workout; resetInactivityTimer(); showView("today"); }
   });
@@ -3720,7 +3747,7 @@ function bindSteps() {
       const w = chart.clientWidth;
       if (!w || Math.abs(w - last) < 6) return;
       last = w;
-      requestAnimationFrame(() => { if ($("#view-steps.active")) renderSteps(); });   // after this frame's layout, never inside it
+      requestAnimationFrame(() => { if ($("#view-goals.active") && goalsSeg === "analytics") renderGoals(); });   // after this frame's layout, never inside it
     }).observe(chart);
   }
 }
@@ -4552,7 +4579,7 @@ function init() {
   applyTheme();
   bindEvents();
   bindGoals();
-  bindSteps();
+  bindAnalytics();
   // The service worker is the offline layer for BOTH the web PWA and the
   // native shell (which loads the live site in remote mode — WKAppBoundDomains
   // makes SWs available there). Only the legacy bundled capacitor:// scheme

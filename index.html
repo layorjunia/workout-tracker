@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <title>Sets &amp; Steps</title>
-<link rel="stylesheet" href="styles.css?v=72">
+<link rel="stylesheet" href="styles.css?v=73">
 </head>
 <body>
 
@@ -193,9 +193,6 @@
       <div id="steps-card"></div>
       <button class="btn btn-secondary native-only" id="btn-steps-sync" style="margin-top:14px;width:100%">Sync Apple Health now</button>
     </div>
-    <div class="card d-card hidden" id="steps-chart-wrap"><div id="steps-chart"></div></div>
-    <div class="card d-card hidden" id="steps-activity-wrap"><div id="steps-activity"></div></div>
-    <div class="card d-card hidden" id="steps-records-wrap"><div id="steps-records"></div></div>
     <div class="card hidden" id="goal-card-wrap">
       <div id="goal-card"></div>
     </div>
@@ -258,8 +255,22 @@
     <div class="topbar-title">Goals</div>
   </header>
   <div class="container dash">
-    <div id="goals-list"></div>
-    <button class="btn btn-secondary" id="btn-goal-add" style="width:100%">Add goal</button>
+    <div class="segmented" id="goals-seg" role="tablist">
+      <button data-gseg="goals" class="active" role="tab">Goals</button>
+      <button data-gseg="analytics" role="tab">Analytics</button>
+    </div>
+    <div class="seg-panel" id="gseg-goals">
+      <div id="goals-list"></div>
+      <button class="btn btn-secondary" id="btn-goal-add" style="width:100%">Add goal</button>
+    </div>
+    <div class="seg-panel hidden" id="gseg-analytics">
+      <div class="card d-card hidden" id="an-tiles-wrap"><div id="an-tiles"></div></div>
+      <div class="card d-card hidden" id="an-chart-wrap"><div id="an-chart"></div></div>
+      <div class="card d-card hidden" id="an-activity-wrap"><div id="an-activity"></div></div>
+      <div class="card d-card hidden" id="an-records-wrap"><div id="an-records"></div></div>
+      <div id="an-best"></div>
+      <div class="card d-card hidden" id="an-empty"><div class="d-head"><span class="d-kicker">Analytics</span></div><div class="muted">Your steps from Apple Health will show up here.</div></div>
+    </div>
   </div>
 </section>
 
@@ -717,11 +728,11 @@
   </button>
 </nav>
 
-<script src="vendor/chart.umd.js?v=72"></script>
-<script src="dash.js?v=72"></script>
-<script src="app.js?v=72"></script>
-<script src="analytics.js?v=72"></script>
-<script type="module" src="vendor/firebase-sync.bundle.js?v=72"></script>
-<script src="capacitor-health.js?v=72"></script>
+<script src="vendor/chart.umd.js?v=73"></script>
+<script src="dash.js?v=73"></script>
+<script src="app.js?v=73"></script>
+<script src="analytics.js?v=73"></script>
+<script type="module" src="vendor/firebase-sync.bundle.js?v=73"></script>
+<script src="capacitor-health.js?v=73"></script>
 </body>
 </html>

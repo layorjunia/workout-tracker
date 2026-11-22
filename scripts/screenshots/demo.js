@@ -105,6 +105,7 @@ window.addEventListener("load", () => setTimeout(() => {
       const sel = $("#progress-exercise"); if (sel) { sel.value = exId("Bench Press"); sel.dispatchEvent(new Event("change")); }
     }
     const q = new URLSearchParams(location.search);
+    if (q.get("seg")) { goalsSeg = q.get("seg"); renderGoals(); }       // e.g. view=goals&seg=analytics
     if (q.get("scrollTo")) { document.querySelector(q.get("scrollTo"))?.scrollIntoView({ block: "start" }); window.scrollBy(0, -(+q.get("pad") || 90)); }
     else if (q.get("scrollY")) window.scrollTo(0, +q.get("scrollY"));
     // iPhone chrome: status bar and home indicator, since a desktop browser has neither
