@@ -2950,6 +2950,14 @@ const MEDAL_LINES = ["", "On the board", "Rolling", "In the groove", "Closing on
 const medalEmoji = (lvl) => lvl >= 10 ? "🏆" : lvl === 5 ? "🥇" : "🏅";
 const medalLevel = (g) => g && g.target > 0 ? Math.max(0, Math.min(10, Math.floor(g.total * 10 / g.target))) : 0;
 
+// The next 10% of a goal: which one it is, how many are still to go, and how far through this tenth you are.
+function nextTenth(g) {
+  const lvl = medalLevel(g);
+  if (!g || g.phase !== "active" || lvl >= 10) return null;
+  const at = Math.ceil(g.target * (lvl + 1) / 10 - 1e-9), from = Math.ceil(g.target * lvl / 10 - 1e-9);
+  return { pct: (lvl + 1) * 10, toGo: Math.max(0, at - g.total), frac: at > from ? Math.min(1, Math.max(0, (g.total - from) / (at - from))) : 0 };
+}
+
 // What today has to bring, held steady all day: the remaining days share what was left this morning.
 function dayQuota(g, todayN) {
   if (!g || g.phase !== "active") return 0;
@@ -3126,7 +3134,7 @@ function miniBarsSVG(list, avg) {
 
 // Steps work in whole numbers and have a meter from the plan's starting average down to the
 // daily goal; rep goals work in tenths. `days` (date -> count) draws the last month as bars.
-function goalCardHTML(g, { title, unit = "", floor = null, decimals = false, todayN = 0, card = "", surface = "goals", color = "var(--accent)", days = null } = {}) {
+function goalCardHTML(g, { title, unit = "", floor = null, decimals = false, todayN = 0, card = "", surface = "goals", color = "var(--accent)", days = null, compact = false } = {}) {
   const done = g.phase === "reached";
   const rk = (field) => `${surface}|${card}|${field}`;
   const pct = Math.floor(Math.min(g.percent, 9.99) * 100);
@@ -3166,8 +3174,10 @@ function goalCardHTML(g, { title, unit = "", floor = null, decimals = false, tod
     }
     need = `<div class="lg-need"><div class="lg-need-top"><span class="d-kicker">Needed each day</span>${delta}</div><div class="lg-need-main"><strong>${perDayText(decimals ? g.need : g.perDay)}</strong><span>${unit ? `${unit} a day` : "a day"} · ${plural(g.daysLeft, "day")} left</span></div>${meter}</div>`;
   }
+  const nx = nextTenth(g);
+  const next = nx ? `<div class="gc-next"><div class="gc-next-top"><span>Next <b>${nx.pct}%</b></span><strong>${fmt(nx.toGo)} to go</strong></div><div class="gc-next-bar"><i style="width:${(nx.frac * 100).toFixed(1)}%"></i></div></div>` : "";
   let bars = "";
-  if (days && g.phase !== "upcoming") {
+  if (days && !compact && g.phase !== "upcoming") {
     const today = todayISO(), month = addDaysISO(today, -29);
     const from = g.start > month ? g.start : month, to = today < g.end ? today : g.end;
     if (to >= from) bars = `<div class="gc-chart" data-grow data-rk="${rk("bars")}">${miniBarsSVG(DashMath.range(days, from, to), avg)}</div>`;
@@ -3183,9 +3193,10 @@ function goalCardHTML(g, { title, unit = "", floor = null, decimals = false, tod
           <em class="gc-note ${noteCls}">${note}</em>
         </div>
       </div>
+      ${next}
       ${need}
       ${bars}
-      <div class="d-tiles three">${tiles}</div>
+      ${compact ? "" : `<div class="d-tiles three">${tiles}</div>`}
     </div>`;
 }
 
@@ -3196,7 +3207,7 @@ function renderLongGoal(g, floor = state.settings.stepGoal || 10000, v = null) {
   const plan = state.settings.stepLongGoal;
   const todaySteps = v?.todaySteps || 0;
   paint(host, g ? goalCardHTML(g, {
-    title: `${fmt(g.target)} steps`, unit: "steps", floor, todayN: todaySteps, card: "steps", surface: "steps",
+    title: `${fmt(g.target)} steps`, unit: "steps", floor, todayN: todaySteps, card: "steps", surface: "steps", compact: true,
     days: plan ? stepDays(plan, v?.today || todayISO(), todaySteps) : null,
   }) : "", true);
 }

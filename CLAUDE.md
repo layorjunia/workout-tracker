@@ -19,5 +19,9 @@ This table is the layout for this project. The global rule in `~/.claude/CLAUDE.
 root-level `build/` folder; here `scratch/` and the `ios/build*` folders take its place (`package.json`
 depends on `ios/build`), so do not add a second `build/` folder.
 
+**App Store Connect is hands-off unless Jacob asks** (his words, 2026-11-22: "don't keep updating the App Store version
+unless I ask for it"). Do not upload builds, swap screenshots or edit the listing, review details or version on your own
+initiative, even after the app changes. Pushing the web app and installing on his own phone are fine.
+
 The GitHub repo is public and Vercel serves the repo root. Never put copies of Jacob's data (phone
 databases, exports, workout screenshots) anywhere tracked, and read `git status` before every commit.

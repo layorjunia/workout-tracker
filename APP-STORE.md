@@ -76,7 +76,7 @@ Not collected: location, contacts, browsing or search history, purchases, usage 
 Six iPhone 6.9-inch images (1320 x 2868) are in `store/screenshots/iphone-6.9/` (git-ignored): Today,
 Progress, Steps, Goals analytics (figures, daily chart, activity grid), Goals, Health. They are the real app rendered from made-up demo data, with an iPhone
 status bar drawn on. Regenerate them after any UI change with `node scripts/screenshots.mjs` (needs
-Google Chrome), then swap them in the listing with `python3 scripts/asc-listing.py screenshots --replace`.
+Google Chrome), then, only when Jacob asks, swap them in the listing with `python3 scripts/asc-listing.py screenshots --replace`.
 No iPad set is needed (the app is iPhone-only).
 
 ## Checklist
