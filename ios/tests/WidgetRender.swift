@@ -2,7 +2,7 @@
 // dark and light. Not part of the Xcode project. Run it with  scripts/widget-render.sh  from the project
 // root: everything lands in scratch/widget-render (git-ignored) as <family>_<state>_<dark|light>.png, and
 // contact sheets of them. The red outline marks the content area (306x126 medium, 126x126 small);
-// anything crossing it overflows on the phone.
+// anything crossing it overflows on the phone. CLEAN=1 scripts/widget-render.sh leaves the outline out.
 
 import SwiftUI
 import WidgetKit
@@ -10,6 +10,7 @@ import AppKit
 
 let cal = StepEngine.calendar()
 let today = StepEngine.dayKey(Date(), cal)
+let showBounds = ProcessInfo.processInfo.environment["CLEAN"] == nil     // CLEAN=1 leaves out the red outline
 
 func summary(streakDays: Int, todaySteps: Int, plan: LongGoalPlan?, perDay: Int, older: Int = 3000, mixed: [Int]? = nil) -> StepSummary {
     var counts: [String: Int] = [:]
@@ -34,7 +35,7 @@ func render(_ name: String, _ s: StepSummary, _ family: WidgetFamily, _ scheme: 
     let h: CGFloat = 158
     let inner = StreakWidgetView(entry: StepEntry(date: .now, summary: s), family: family)
         .frame(width: w - side * 2, height: h - side * 2, alignment: .center)
-        .overlay(Rectangle().stroke(Color.red.opacity(0.6), lineWidth: 0.5))      // content bounds
+        .overlay { if showBounds { Rectangle().stroke(Color.red.opacity(0.6), lineWidth: 0.5) } }      // content bounds
     let v = ZStack { StepBackdrop(); inner }
         .frame(width: w, height: h)
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
