@@ -13,8 +13,9 @@ import os, re, time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 html = open(os.path.join(ROOT, "index.html"), encoding="utf-8").read()
 html = html.replace("<head>", '<head>\n<base href="/">', 1)
-html = re.sub(r"\?v=\d+", f"?v=dev{int(time.time())}", html)
-html = re.sub(r'(<script src="capacitor-health\.js[^"]*"></script>)', r'\1\n<script src="/scripts/screenshots/demo.js"></script>', html, count=1)
+stamp = f"dev{int(time.time())}"
+html = re.sub(r"\?v=\d+", f"?v={stamp}", html)
+html = re.sub(r'(<script src="capacitor-health\.js[^"]*"></script>)', rf'\1\n<script src="/scripts/screenshots/demo.js?v={stamp}"></script>', html, count=1)
 assert "screenshots/demo.js" in html, "index.html changed shape: update the replacement in scripts/demo-page.py"
 out = os.path.join(ROOT, "scratch", "demo-dev")
 os.makedirs(out, exist_ok=True)

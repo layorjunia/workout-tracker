@@ -3665,7 +3665,7 @@ function renderGoalsAnalytics(v, snaps, auto) {
   paint($("#an-records"), has ? stepsRecordsHTML(v, M) : "", auto);
   const best = recordsHTML(snaps);
   paint($("#an-best"), best, auto);
-  $("#an-empty")?.classList.toggle("hidden", has || !!best);
+  $("#an-empty")?.classList.toggle("hidden", has);
 }
 
 function stepDayDetail(v, M, date) {
