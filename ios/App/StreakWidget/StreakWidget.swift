@@ -59,6 +59,8 @@ enum Brand {
     static let blue = Color(red: 0.478, green: 0.553, blue: 1.0)
     static let mint = Color(red: 0.204, green: 0.890, blue: 0.698)
     static let amber = Color(red: 1.0, green: 0.706, blue: 0.329)
+    static let violet = Color(red: 0.710, green: 0.549, blue: 1.0)
+    static let pink = Color(red: 1.0, green: 0.494, blue: 0.714)
     static var sweep: LinearGradient { LinearGradient(colors: [blue, mint], startPoint: .leading, endPoint: .trailing) }
 }
 
@@ -114,6 +116,29 @@ struct GradientRing: View {
                         style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .shadow(color: done ? Brand.mint.opacity(0.55) : .clear, radius: 5)
+            }
+        }
+    }
+}
+
+/// This week's workouts against their goal: the ring inside today's, violet to pink, mint once the week's goal is met.
+struct WorkoutRing: View {
+    let pct: Double
+    let done: Bool
+    var lineWidth: CGFloat = 5
+
+    var body: some View {
+        let sweep = max(0.03, min(1, pct))
+        ZStack {
+            Circle().inset(by: lineWidth / 2).stroke(Color.primary.opacity(0.10), lineWidth: lineWidth)
+            if pct > 0 {
+                Circle().inset(by: lineWidth / 2)
+                    .trim(from: 0, to: sweep)
+                    .stroke(done ? AnyShapeStyle(Brand.mint)
+                                 : AnyShapeStyle(AngularGradient(colors: [Brand.violet, Brand.pink], center: .center,
+                                                                 startAngle: .degrees(0), endAngle: .degrees(360 * sweep))),
+                            style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
             }
         }
     }
@@ -326,21 +351,27 @@ struct StreakWidgetView: View {
         }
     }
 
-    /// Today against the goal. The small widget shows only the count, the medium one the goal as well.
+    /// Today's steps against the goal on the outside, this week's workouts against theirs inside it. The small
+    /// widget shows only the step count in the middle, the medium one the goal as well.
     func ring(_ s: StepSummary, size: CGFloat, line: CGFloat, caption: Bool) -> some View {
         let pct = s.goal > 0 ? Double(s.todaySteps) / Double(s.goal) : 0
+        let wk = s.workoutGoal > 0 ? Double(s.workoutsThisWeek) / Double(s.workoutGoal) : 0
+        let inner = size - 2 * (line + 3)
+        let innerLine = max(4, line * 0.6)
         return ZStack {
             GradientRing(pct: pct, done: s.goalMet, lineWidth: line)
-            VStack(spacing: 1) {
+            WorkoutRing(pct: wk, done: s.workoutsThisWeek >= s.workoutGoal, lineWidth: innerLine)
+                .frame(width: inner, height: inner)
+            VStack(spacing: 0) {
                 Text(caption ? s.todaySteps.formatted() : fmtSteps(s.todaySteps))
-                    .font(.system(size: size * (caption ? 0.19 : 0.21), weight: .heavy)).monospacedDigit()
+                    .font(.system(size: size * (caption ? 0.17 : 0.19), weight: .heavy)).monospacedDigit()
                     .minimumScaleFactor(0.5).lineLimit(1)
                 if caption {
-                    Text("of \(s.goal.formatted())").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
+                    Text("of \(s.goal.formatted())").font(.system(size: 8.5, weight: .semibold)).foregroundStyle(.secondary)
                         .minimumScaleFactor(0.7).lineLimit(1)
                 }
             }
-            .padding(.horizontal, line + 5)
+            .frame(width: inner - 2 * innerLine - 2)
         }
         .frame(width: size, height: size)
     }

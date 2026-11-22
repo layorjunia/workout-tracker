@@ -5,6 +5,7 @@ window.addEventListener("error", (e) => window.__errors.push(e.message));
 window.addEventListener("load", () => setTimeout(() => {
   const view = new URLSearchParams(location.search).get("view") || "today";
   document.documentElement.classList.add("native");   // the iPhone app hides the web-only cards
+  document.documentElement.classList.add("island");   // and its status bar sits over the page
   document.head.insertAdjacentHTML("beforeend", "<style>.view,.nav-btn,.cheer{transition:none!important;animation:none!important}</style>");
   let seed = 11;
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;

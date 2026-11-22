@@ -123,13 +123,15 @@ a { color: var(--accent); }
 .topbar {
   position: sticky; top: 0; z-index: 20;
   display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;
-  padding: calc(env(safe-area-inset-top) + 14px) var(--pad) 12px;
+  padding: calc(env(safe-area-inset-top) + 8px) max(var(--pad), env(safe-area-inset-right)) 8px max(var(--pad), env(safe-area-inset-left));
   background: color-mix(in srgb, var(--bg) 82%, transparent);
   backdrop-filter: saturate(180%) blur(16px);
   -webkit-backdrop-filter: saturate(180%) blur(16px);
   border-bottom: 1px solid var(--border);
 }
-.topbar-title { font-size: 30px; font-weight: 800; letter-spacing: -0.025em; line-height: 1.05; }
+/* Phones that draw the status bar over the page (Dynamic Island, notch): the title starts just under it */
+html.island .topbar { padding-top: max(calc(env(safe-area-inset-top) - 16px), 8px); }
+.topbar-title { font-size: 26px; font-weight: 800; letter-spacing: -0.025em; line-height: 1.05; }
 .topbar-sub { font-size: 13px; color: var(--text-dim); margin-top: 4px; font-weight: 500; }
 .topbar .topbar-action, .topbar input.topbar-action, .topbar select.topbar-action {
   width: auto; background: var(--bg-elev-2); color: var(--text);
@@ -139,7 +141,7 @@ a { color: var(--accent); }
 }
 .topbar .btn-ghost { color: var(--accent); font-weight: 650; padding: 0 6px; min-height: 40px; }
 
-.container { padding: var(--pad); display: flex; flex-direction: column; gap: 14px; }
+.container { padding: var(--pad) max(var(--pad), env(safe-area-inset-right)) var(--pad) max(var(--pad), env(safe-area-inset-left)); display: flex; flex-direction: column; gap: 14px; }
 
 /* ───────── Cards ───────── */
 .card {
@@ -952,7 +954,7 @@ button.gl-row-link { width: 100%; background: none; border: 0; border-bottom: 1p
 .bottom-nav {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
   height: calc(var(--nav-h) + env(safe-area-inset-bottom));
-  padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+  padding: 6px max(6px, env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
   background: color-mix(in srgb, var(--bg-elev) 92%, transparent);
   backdrop-filter: saturate(180%) blur(18px);
   -webkit-backdrop-filter: saturate(180%) blur(18px);
