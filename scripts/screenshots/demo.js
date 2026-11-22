@@ -54,10 +54,16 @@ window.addEventListener("load", () => setTimeout(() => {
   });
   s.workouts.push(live);
 
-  // ───── daily health: 40 days of steps, vitals, sleep ─────
-  const stepsFor = (back) => back === 0 ? 10432 : back <= 12 ? 10300 + Math.floor(rnd() * 3800) : back === 13 ? 7400 : 7600 + Math.floor(rnd() * 5200);
-  for (let back = 40; back >= 0; back--) {
+  // ───── daily health: about five months of steps (the last 40 days also have vitals and sleep) ─────
+  const stepsFor = (back) => back === 0 ? 10432 : back <= 12 ? 10300 + Math.floor(rnd() * 3800) : back === 13 ? 7400
+    : back <= 40 ? 7600 + Math.floor(rnd() * 5200) : 5200 + Math.floor(rnd() * 7600) - (dow(back) === 0 ? 1800 : 0);
+  for (let back = 150; back >= 0; back--) {
     const date = dayISO(back);
+    if (back > 40) {
+      if (back === 77 || back === 76 || back === 120) continue;          // a few days the phone stayed home
+      s.health.daily[date] = { stepsToday: stepsFor(back), updatedAt: Date.now() - back * 86400000 };
+      continue;
+    }
     s.health.daily[date] = {
       stepsToday: stepsFor(back), distanceMiToday: +(stepsFor(back) / 2150).toFixed(1),
       restingHR: 56 + Math.floor(rnd() * 5), hrv: 52 + Math.floor(rnd() * 22), bloodOxygen: 97 + Math.floor(rnd() * 2),

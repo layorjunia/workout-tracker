@@ -15,15 +15,19 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CHROME = process.env.CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-const OUT = path.join(ROOT, "store/screenshots/iphone-6.9");
+// DEV=1 node scripts/screenshots.mjs  writes full-length pages to scratch/dev-shots instead of the store set
+// (ONLY=03-steps,04-goals limits which); the store screenshots are left alone.
+const DEV = !!process.env.DEV;
+const OUT = DEV ? path.join(ROOT, "scratch/dev-shots") : path.join(ROOT, "store/screenshots/iphone-6.9");
 const WORK = path.join(ROOT, "scratch/screenshots");
 const W = 440, H = 956, SCALE = 3;
 const SHOTS = [                                   // [file name, demo page query]
   ["01-today", "view=today&scrollY=330"],
   ["02-progress", "view=progress&scrollTo=%23progress-exercise&pad=150"],
   ["03-steps", "view=steps"],
-  ["04-goals", "view=goals"],
-  ["05-health", "view=health&scrollTo=%23health-snapshot&pad=185"],
+  ["04-activity", "view=steps&scrollTo=%23steps-chart-wrap&pad=150"],
+  ["05-goals", "view=goals"],
+  ["06-health", "view=health&scrollTo=%23health-snapshot&pad=185"],
 ];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -34,6 +38,7 @@ async function main() {
   fs.rmSync(WORK, { recursive: true, force: true });
   fs.mkdirSync(WORK, { recursive: true });
   fs.mkdirSync(OUT, { recursive: true });
+  if (!process.env.ONLY) for (const f of fs.readdirSync(OUT)) if (f.endsWith(".png")) fs.rmSync(path.join(OUT, f));   // a full run replaces the whole set
 
   // The demo page: the real index.html with fixed iPhone safe-area insets (a desktop browser has none),
   // plus the demo data loaded after app.js.
@@ -97,14 +102,22 @@ async function main() {
   await send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: SCALE, mobile: true });
   await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });   // no count-up animations: final numbers
 
+  const only = process.env.ONLY ? process.env.ONLY.split(",") : null;
   for (const [name, query] of SHOTS) {
+    if (only && !only.includes(name)) continue;
     const loaded = waitEvent("Page.loadEventFired");
     await send("Page.navigate", { url: `${base}/scratch/screenshots/index_demo.html?${query}` });
     await loaded;
     await waitFor("window.__demoReady === true", 30000);
     await sleep(1500);                                         // let charts and renders settle
     const errors = await evaluate("window.__errors ? window.__errors.join(' | ') : ''");
+    if (DEV) {
+      const full = await evaluate("Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)");
+      await send("Emulation.setDeviceMetricsOverride", { width: W, height: Math.max(H, full), deviceScaleFactor: SCALE, mobile: true });
+      await sleep(900);
+    }
     const { data } = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
+    if (DEV) await send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: SCALE, mobile: true });
     fs.writeFileSync(path.join(OUT, name + ".png"), Buffer.from(data, "base64"));
     console.log("wrote", path.relative(ROOT, path.join(OUT, name + ".png")), errors ? "  page errors: " + errors : "");
   }

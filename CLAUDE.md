@@ -10,7 +10,8 @@ directory. This overrides the default of using the scratchpad for temporary file
 | Throwaway work: test copies, renders, recordings, logs, anything pulled off the phone | `scratch/` (git-ignored). Delete what you made when the job is done. |
 | Reusable scripts | `scripts/`. `scripts/bump-version.sh <from> <to>` bumps `?v=` in `index.html` and `VERSION` in `service-worker.js`. App Store release: `scripts/asc-status.py`, `scripts/asc.py` (one API call), `scripts/asc-listing.py`, `scripts/appstore-profiles.py`, `scripts/release.sh`, `scripts/make-icon.sh` (draws and installs the app icon; keys in the git-ignored `scripts/.asc-env`); listing text and checklist in `APP-STORE.md`. |
 | Swift test and render harnesses | `ios/tests/` (not part of the Xcode project) |
-| Store screenshots | `store/screenshots/` (git-ignored output), made by `node scripts/screenshots.mjs` from the demo data in `scripts/screenshots/` |
+| Steps and Goals dashboards | the arithmetic is `dash.js` (pure functions, loaded before `app.js`; `node scripts/test-dash.mjs` checks it), the drawing is in `app.js` under "Steps dashboard" and "The card both kinds of goal share", the styles in `styles.css` under "Dashboards". A new top-level name in `app.js` must not be one Capacitor injects (`nativeBridge`). |
+| Store screenshots | `store/screenshots/` (git-ignored output), made by `node scripts/screenshots.mjs` from the demo data in `scripts/screenshots/`. `DEV=1 ONLY=03-steps node scripts/screenshots.mjs` writes full-length pages to `scratch/dev-shots` instead, for checking a change. |
 | Reference guides | the project root, beside `CAPACITOR.md` |
 | Builds | `ios/build` (device), `ios/build-sim` (simulator), `www/` (web copy). Pass `-derivedDataPath` inside the project. |
 

@@ -73,10 +73,11 @@ Not collected: location, contacts, browsing or search history, purchases, usage 
 
 ## Screenshots
 
-Five iPhone 6.9-inch images (1320 x 2868) are in `store/screenshots/iphone-6.9/` (git-ignored): Today,
-Progress, Steps, Goals, Health. They are the real app rendered from made-up demo data, with an iPhone
+Six iPhone 6.9-inch images (1320 x 2868) are in `store/screenshots/iphone-6.9/` (git-ignored): Today,
+Progress, Steps, Steps (daily chart and activity grid), Goals, Health. They are the real app rendered from made-up demo data, with an iPhone
 status bar drawn on. Regenerate them after any UI change with `node scripts/screenshots.mjs` (needs
-Google Chrome). No iPad set is needed (the app is iPhone-only).
+Google Chrome), then swap them in the listing with `python3 scripts/asc-listing.py screenshots --replace`.
+No iPad set is needed (the app is iPhone-only).
 
 ## Checklist
 
@@ -89,7 +90,7 @@ Google Chrome). No iPad set is needed (the app is iPhone-only).
 | 5 | Privacy policy and support pages, in-app links | done | live |
 | 6 | iPhone-only, privacy manifests, encryption flag, clearer Health wording | done | in the signed export |
 | 7 | Deploy the web changes | done | pushed as 561c8fb, checked live |
-| 8 | Screenshots | done | 5 uploaded (1320 x 2868) to the 6.7/6.9-inch slot, `store/screenshots/iphone-6.9/` |
+| 8 | Screenshots | done | 6 uploaded (1320 x 2868) to the 6.7/6.9-inch slot, `store/screenshots/iphone-6.9/`; retaken for the new Steps and Goals look (v72) |
 | 9 | App Store signing profiles, and a signed export of the .ipa | done | tested, then used for the upload |
 | 10 | Upload the build and fill in the listing (text, category, age rating 4+, free, 175 storefronts, copyright, content rights, review notes) | done | build 261103.1303 (new icon) attached to 1.0; `scripts/release.sh --upload`, `scripts/asc-listing.py` |
 | 11 | In App Store Connect (web only): App Privacy answers, regulated-medical-device declaration (App Information), EU Digital Services Act trader status, and the review contact phone (Apple requires one) | Jacob | waiting |

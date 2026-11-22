@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <title>Sets &amp; Steps</title>
-<link rel="stylesheet" href="styles.css?v=70">
+<link rel="stylesheet" href="styles.css?v=72">
 </head>
 <body>
 
@@ -188,15 +188,20 @@
   <header class="topbar">
     <div class="topbar-title">Steps</div>
   </header>
-  <div class="container">
-    <div class="card">
+  <div class="container dash">
+    <div class="card d-hero">
       <div id="steps-card"></div>
-      <button class="btn btn-secondary native-only" id="btn-steps-sync" style="margin-top:12px;width:100%">Sync Apple Health now</button>
+      <button class="btn btn-secondary native-only" id="btn-steps-sync" style="margin-top:14px;width:100%">Sync Apple Health now</button>
     </div>
+    <div class="card d-card hidden" id="steps-chart-wrap"><div id="steps-chart"></div></div>
+    <div class="card d-card hidden" id="steps-activity-wrap"><div id="steps-activity"></div></div>
+    <div class="card d-card hidden" id="steps-records-wrap"><div id="steps-records"></div></div>
     <div class="card hidden" id="goal-card-wrap">
       <div id="goal-card"></div>
     </div>
-    <div class="card">
+    <details class="card d-fold" id="steps-settings">
+      <summary>Step settings</summary>
+      <div class="d-fold-body">
       <div class="row" style="align-items:flex-end">
         <label class="col" style="margin:0">
           <span class="label">Daily step goal</span>
@@ -242,7 +247,8 @@
         </label>
       </div>
       <button class="btn btn-ghost danger hidden" id="btn-long-clear" style="margin-top:8px;width:100%">Remove goal</button>
-    </div>
+      </div>
+    </details>
   </div>
 </section>
 
@@ -251,7 +257,7 @@
   <header class="topbar">
     <div class="topbar-title">Goals</div>
   </header>
-  <div class="container">
+  <div class="container dash">
     <div id="goals-list"></div>
     <button class="btn btn-secondary" id="btn-goal-add" style="width:100%">Add goal</button>
   </div>
@@ -711,10 +717,11 @@
   </button>
 </nav>
 
-<script src="vendor/chart.umd.js?v=70"></script>
-<script src="app.js?v=70"></script>
-<script src="analytics.js?v=70"></script>
-<script type="module" src="vendor/firebase-sync.bundle.js?v=70"></script>
-<script src="capacitor-health.js?v=70"></script>
+<script src="vendor/chart.umd.js?v=72"></script>
+<script src="dash.js?v=72"></script>
+<script src="app.js?v=72"></script>
+<script src="analytics.js?v=72"></script>
+<script type="module" src="vendor/firebase-sync.bundle.js?v=72"></script>
+<script src="capacitor-health.js?v=72"></script>
 </body>
 </html>

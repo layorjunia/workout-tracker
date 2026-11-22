@@ -6,5 +6,5 @@
 cd "$(dirname "$0")/.." || exit 1
 sed -i '' "s/?v=$1/?v=$2/g" index.html
 sed -i '' "s/const VERSION = \"v$1\"/const VERSION = \"v$2\"/" service-worker.js
-echo "index.html: $(grep -F -c -- "?v=$2" index.html) lines with ?v=$2 (6 expected)"
+echo "index.html: $(grep -F -c -- "?v=$2" index.html) lines with ?v=$2 (7 expected)"
 grep -n "VERSION =" service-worker.js

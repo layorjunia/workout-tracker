@@ -4,6 +4,7 @@
     python3 scripts/asc-listing.py            # text, category, age rating, price, availability
     python3 scripts/asc-listing.py review     # the notes and contact for App Review
     python3 scripts/asc-listing.py screenshots  # upload store/screenshots/iphone-6.9/*.png
+    python3 scripts/asc-listing.py screenshots --replace   # delete the ones there first, then upload
     python3 scripts/asc-listing.py build      # attach the newest processed build to version 1.0
 
 The text mirrors APP-STORE.md. What the API cannot do is left to the web: App Privacy answers, the EU
@@ -150,9 +151,12 @@ def screenshots():
         sset = r["data"]
     sid = sset["id"]
     have = asc.call("GET", f"/v1/appScreenshotSets/{sid}/appScreenshots").get("data", [])
-    if have:
-        print(f"   the set already holds {len(have)} screenshots; delete them in App Store Connect first to replace them")
+    if have and "--replace" not in sys.argv:
+        print(f"   the set already holds {len(have)} screenshots; run again with --replace to swap them for the files in store/screenshots/iphone-6.9")
         return
+    for old in have:
+        if not check(f"delete {old['attributes']['fileName']}", asc.call("DELETE", f"/v1/appScreenshots/{old['id']}")):
+            return
     for path in sorted(glob.glob(os.path.join(ROOT, "store/screenshots/iphone-6.9/*.png"))):
         data = open(path, "rb").read()
         r = asc.call("POST", "/v1/appScreenshots", {"data": {"type": "appScreenshots", "attributes": {"fileName": os.path.basename(path), "fileSize": len(data)},
