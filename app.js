@@ -4589,12 +4589,15 @@ const isNativeApp = () => !!(window.Capacitor?.isNativePlatform?.());
 function init() {
   applyTheme();
   // With the shell not insetting the page, a Dynamic Island or notch phone reports a safe area of 40pt or more at the top
-  // and the title can start right under the status bar; anywhere else the header keeps a plain margin.
+  // and the title can start right under the status bar; anywhere else the header keeps a plain margin. The shell gives the
+  // page its insets a moment after the first script runs, so the probe stays and the class follows whatever it measures.
   const probe = document.createElement("div");
   probe.style.cssText = "position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top);visibility:hidden;pointer-events:none";
   document.body.appendChild(probe);
-  document.documentElement.classList.toggle("island", probe.offsetHeight >= 40);
-  probe.remove();
+  const markIsland = () => document.documentElement.classList.toggle("island", probe.offsetHeight >= 40);
+  markIsland();
+  if (window.ResizeObserver) new ResizeObserver(markIsland).observe(probe);
+  window.addEventListener("resize", markIsland);
   bindEvents();
   bindGoals();
   bindAnalytics();
