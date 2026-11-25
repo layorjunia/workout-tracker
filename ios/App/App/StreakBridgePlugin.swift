@@ -25,6 +25,13 @@ public class StreakBridgePlugin: CAPPlugin, CAPBridgedPlugin {
             s.goal = call.getInt("goal") ?? s.goal
             s.calApple = call.getDouble("calApple")
             s.calActual = call.getDouble("calActual")
+            if let steps = call.getArray("calHistory") as? [[String: Any]] {
+                s.calHistory = steps.compactMap { d in
+                    guard let from = d["from"] as? String else { return nil }
+                    return CalibrationStep(from: from, apple: (d["apple"] as? NSNumber)?.doubleValue,
+                                           actual: (d["actual"] as? NSNumber)?.doubleValue)
+                }
+            }
             s.workoutGoal = call.getInt("workoutGoal") ?? s.workoutGoal
             s.reminderEnabled = call.getBool("reminderEnabled") ?? s.reminderEnabled
             s.reminderHour = call.getInt("reminderHour") ?? s.reminderHour

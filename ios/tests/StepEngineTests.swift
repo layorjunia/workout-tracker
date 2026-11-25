@@ -115,6 +115,25 @@ check("no pair → ×1", StepSettings().calibration, 1.0)
 check("7600 → 10000", (jacob.calibration * 10000).rounded() / 10000, 1.3158)
 check("clamped high", StepSettings(calApple: 1000, calActual: 9000).calibration, 3.0)
 
+print("\n9b) a changed pair never rewrites the days before it")
+let hist9 = [CalibrationStep(from: "0000-00-00", apple: 7600, actual: 10000), CalibrationStep(from: "2026-09-16", apple: 5000, actual: 10000)]
+let before9 = StepSettings(goal: 10000, calApple: 7600, calActual: 10000, calHistory: [hist9[0]])
+let after9 = StepSettings(goal: 10000, calApple: 5000, calActual: 10000, calHistory: hist9)
+let counts9 = ["2026-09-14": 7600, "2026-09-15": 7600, "2026-09-16": 1000]
+let a9 = StepEngine.compute(today: "2026-09-16", counts: counts9, peaks: [:], settings: before9, computedAt: 0, denver)
+let b9 = StepEngine.compute(today: "2026-09-16", counts: counts9, peaks: [:], settings: after9, computedAt: 0, denver)
+check("Sep 15 is the same after the change", day(b9, "2026-09-15")?.steps, day(a9, "2026-09-15")?.steps)
+check("Sep 15 kept the old factor", day(b9, "2026-09-15")?.steps, Optional(10000))
+check("Sep 14 is the same too", day(b9, "2026-09-14")?.steps, day(a9, "2026-09-14")?.steps)
+check("today uses the new pair", b9.todaySteps, 2000)
+check("…and it was 1,316 under the old one", a9.todaySteps, 1316)
+check("a day before the first entry is counted as read", StepSettings(calHistory: [CalibrationStep(from: "2026-09-16", apple: 5000, actual: 10000)]).calibration(on: "2026-09-15"), 1.0)
+check("no history: the current pair for every day", jacob.calibration(on: "2020-01-01"), jacob.calibration)
+check("a correction can be switched off from a day", StepSettings(calHistory: [hist9[0], CalibrationStep(from: "2026-09-16", apple: nil, actual: nil)]).calibration(on: "2026-09-17"), 1.0)
+let old9 = try! JSONDecoder().decode(StepSettings.self, from: #"{"goal":9000,"workoutGoal":3,"reminderEnabled":false,"reminderHour":19,"workoutDates":[],"calApple":7600,"calActual":10000}"#.data(using: .utf8)!)
+check("settings saved before there was a history still load", old9.goal, 9000)
+check("…and keep their pair for every day", old9.calibration(on: "2026-01-01"), old9.calibration)
+
 print("\n10) workouts this week (Monday start)")
 let s10 = StepEngine.compute(today: "2026-09-16", counts: [:], peaks: [:],
                              settings: StepSettings(workoutDates: ["2026-09-13", "2026-09-14", "2026-09-14", "2026-09-16", "2026-09-17"]),

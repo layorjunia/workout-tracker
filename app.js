@@ -422,15 +422,26 @@ function stepsFor(date) {
   return vals.length ? Math.max(...vals) : null;
 }
 // Apple Health undercounts Jacob's steps (measured: 7k reported ≈ 10k real).
-// Raw HealthKit values stay stored untouched; the factor applies at read time,
-// so changing it recalibrates all history instantly.
-function stepCalibration() {
-  const a = +state.settings.stepCalApple, b = +state.settings.stepCalActual;
-  if (a > 0 && b > 0) return Math.min(3, Math.max(0.5, b / a));
-  return 1;
+// Raw HealthKit values stay stored untouched; the factor applies at read time, and each day uses the factor
+// that was in force on it: settings.stepCalHistory lists { from, apple, actual }, and changing the pair adds
+// an entry from today, so earlier days keep the numbers they had. "0000-00-00" reaches back to the first day.
+const calFactor = (a, b) => (a > 0 && b > 0) ? Math.min(3, Math.max(0.5, b / a)) : 1;
+function stepCalibration(date = todayISO()) {
+  const h = state.settings.stepCalHistory;
+  if (!Array.isArray(h) || !h.length) return calFactor(+state.settings.stepCalApple, +state.settings.stepCalActual);
+  let e = null;
+  for (const x of h) { if (x.from <= date) e = x; else break; }
+  return e ? calFactor(+e.apple, +e.actual) : 1;
 }
-function calSteps(raw) {
-  return raw == null ? null : Math.round(raw * stepCalibration());
+function calSteps(raw, date = todayISO()) {
+  return raw == null ? null : Math.round(raw * stepCalibration(date));
+}
+// The pair in the settings was just changed: it counts from today on.
+function noteStepCalibration() {
+  const s = state.settings, today = todayISO();
+  const entry = { from: today, apple: s.stepCalApple ?? null, actual: s.stepCalActual ?? null };
+  const h = (s.stepCalHistory ||= []);
+  if (h.length && h[h.length - 1].from === today) h[h.length - 1] = entry; else h.push(entry);
 }
 // Weekly workout goal: completed sessions (with logged data) in the current
 // Monday-start week.
@@ -468,12 +479,12 @@ function weekStartOf(iso) {
 
 function streakInfo(today = todayISO()) {
   const goal = state.settings.stepGoal || 10000;
-  const todaySteps = calSteps(stepsFor(today));
+  const todaySteps = calSteps(stepsFor(today), today);
   const days = [];
   for (let i = 0; i < 400; i++) {
     const d = new Date(today + "T00:00:00"); d.setDate(d.getDate() - i);
     const iso = isoDateLocal(d);
-    const steps = iso === today ? todaySteps : calSteps(stepsFor(iso));
+    const steps = iso === today ? todaySteps : calSteps(stepsFor(iso), iso);
     days.push({ date: iso, steps, hit: steps != null && steps >= goal, known: steps != null });
   }
 
@@ -547,7 +558,7 @@ function longGoalFromState(today = todayISO()) {
   if (!plan) return null;
   let done = 0, todayIn = 0;
   for (let d = plan.start, i = 0; d <= plan.end && d <= today && i < 800; d = addDaysISO(d, 1), i++) {
-    const v = calSteps(stepsFor(d)) || 0;
+    const v = calSteps(stepsFor(d), d) || 0;
     if (d < today) done += v; else todayIn = v;
   }
   return longGoalProgress(plan, today, done, todayIn);
@@ -582,6 +593,7 @@ function refreshSteps() {
         goal: state.settings.stepGoal || 10000,
         calApple: state.settings.stepCalApple ?? null,
         calActual: state.settings.stepCalActual ?? null,
+        calHistory: state.settings.stepCalHistory ?? [],
         workoutGoal: state.settings.workoutGoalPerWeek || 4,
         reminderEnabled: !!state.settings.stepReminder,
         reminderHour: state.settings.stepReminderHour || 19,
@@ -1030,6 +1042,15 @@ function migrate(s) {
     s.stepsKeyedByDayV2 = true;
   }
   s.settings.stepCalActual ??= null;    // "…but I actually walked Y" → factor Y/X
+  {
+    const pos = (n) => +n > 0 ? +n : null, pair = { apple: pos(s.settings.stepCalApple), actual: pos(s.settings.stepCalActual) };
+    const h = s.settings.stepCalHistory;
+    if (!Array.isArray(h)) s.settings.stepCalHistory = (pair.apple && pair.actual) ? [{ from: "0000-00-00", ...pair }] : [];   // every day so far keeps today's factor
+    else {
+      const last = h[h.length - 1] || { apple: null, actual: null };
+      if ((last.apple ?? null) !== pair.apple || (last.actual ?? null) !== pair.actual) h.push({ from: todayISO(), ...pair });
+    }
+  }
   s.settings.stepLongGoal ??= null;     // { target, start, end } — a step total between two dates
   s.settings.workoutGoalPerWeek ??= 4;
   s.profile = Object.assign(defaultProfile(), s.profile || {});
@@ -2988,7 +3009,7 @@ function repLook(goal) {
 function stepDays(plan, today, todaySteps) {
   const days = new Map();
   for (let d = plan.start, i = 0; d < today && d <= plan.end && i < 800; d = addDaysISO(d, 1), i++) {
-    const n = calSteps(stepsFor(d));
+    const n = calSteps(stepsFor(d), d);
     if (n) days.set(d, n);
   }
   if (todaySteps > 0 && today >= plan.start && today <= plan.end) days.set(today, todaySteps);
@@ -3897,7 +3918,7 @@ function renderHealthSnapshot() {
   set("#h-resting-hr", d.restingHR, " bpm");
   set("#h-hrv", d.hrv, " ms");
   set("#h-spo2", d.bloodOxygen, "%");
-  set("#h-steps", calSteps(d.stepsToday), stepCalibration() !== 1 ? "" : "");
+  set("#h-steps", calSteps(d.stepsToday, date));
   set("#h-distance", d.distanceMiToday, " mi");
   set("#h-active", d.activeEnergyToday, " kcal");
   set("#h-resting-kcal", d.restingEnergyToday, " kcal");
@@ -4198,6 +4219,7 @@ function bindEvents() {
     if (el) el.onchange = e => {
       const v = Math.round(parseNum(e.target.value));
       state.settings[key] = v > 0 ? v : null;
+      noteStepCalibration();
       saveState(); refreshSteps();
     };
   });

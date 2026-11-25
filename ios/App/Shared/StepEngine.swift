@@ -7,6 +7,13 @@ import Foundation
 /// Every step total arrives keyed by the calendar day HealthKit measured it over.
 /// Nothing here decides which day a number belongs to after the fact.
 
+/// A correction to Health's step count and the first day it applies to; "0000-00-00" reaches back to the first day.
+struct CalibrationStep: Codable, Equatable {
+    var from: String
+    var apple: Double?
+    var actual: Double?
+}
+
 struct StepSettings: Codable, Equatable {
     var goal: Int = 10000
     var calApple: Double? = nil      // what Health reads…
@@ -16,10 +23,22 @@ struct StepSettings: Codable, Equatable {
     var reminderHour: Int = 19
     var workoutDates: [String] = []  // one entry per qualifying session
     var longGoal: LongGoalPlan? = nil
+    var calHistory: [CalibrationStep]? = nil   // the pair in force from each date on; nil or empty: the current pair for every day
 
-    var calibration: Double {
-        guard let a = calApple, let b = calActual, a > 0, b > 0 else { return 1 }
+    static func factor(_ apple: Double?, _ actual: Double?) -> Double {
+        guard let a = apple, let b = actual, a > 0, b > 0 else { return 1 }
         return min(3, max(0.5, b / a))
+    }
+
+    /// The current pair.
+    var calibration: Double { Self.factor(calApple, calActual) }
+
+    /// The factor a day is counted with: the last correction that began on or before it, so changing the pair
+    /// never reaches back and rewrites the days before. Days older than the first correction are counted as read.
+    func calibration(on day: String) -> Double {
+        guard let h = calHistory, !h.isEmpty else { return calibration }
+        guard let step = h.last(where: { $0.from <= day }) else { return 1 }
+        return Self.factor(step.apple, step.actual)
     }
 }
 
@@ -186,8 +205,7 @@ enum StepEngine {
     static func compute(today: String, counts: [String: Int], peaks: [String: Int],
                         settings: StepSettings, computedAt: Double, _ cal: Calendar) -> StepSummary {
         let goal = max(1, settings.goal)
-        let k = settings.calibration
-        let calibrate = { (raw: Int) -> Int in Int((Double(raw) * k).rounded()) }
+        let calibrate = { (raw: Int, day: String) -> Int in Int((Double(raw) * settings.calibration(on: day)).rounded()) }
 
         var days: [StepDay] = []
         days.reserveCapacity(lookbackDays)
@@ -195,7 +213,7 @@ enum StepEngine {
             guard let key = addDays(today, -back, cal) else { continue }
             let raw = counts[key] ?? 0
             let peak = peaks[key] ?? 0
-            let steps = calibrate(max(raw, peak))
+            let steps = calibrate(max(raw, peak), key)
             days.append(StepDay(date: key, raw: raw, peak: peak, steps: steps,
                                 hasData: counts[key] != nil || peaks[key] != nil,
                                 hit: steps >= goal, rescued: false, counts: steps >= goal))
